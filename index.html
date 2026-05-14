@@ -438,25 +438,28 @@ function listenTx(){
   });
 }
 
-// ── 이월 확인 (전달 → 현재) ──
+// ── 이월 확인 (전달 → 현재, 다음달 → 현재) ──
 function checkCarryover(){
   var prev=prevTxs();
-  var cur=curTxs();
   var next=nextTxs();
   var banner=document.getElementById('carryoverBanner');
   var nextBanner=document.getElementById('nextCarryoverBanner');
 
-  // 전달 이월
-  if(prev.length>0 && cur.length===0){
-    var d=new Date(curYear,curMonth-1<0?11:curMonth-1,1);
+  // 전달 이월 - 전달 내역이 있으면 항상 표시
+  if(prev.length>0){
+    var m=curMonth-1<0?11:curMonth-1;
+    var y=curMonth-1<0?curYear-1:curYear;
+    var d=new Date(y,m,1);
     document.getElementById('carryoverText').textContent=d.toLocaleDateString('ko-KR',{month:'long'})+' 세부내역('+prev.length+'건)을 이번 달로 이월할까요?';
     banner.style.display='flex';
   } else { banner.style.display='none'; }
 
-  // 다음달 이월
+  // 다음달 가져오기 - 다음달 내역이 있으면 항상 표시
   if(next.length>0){
-    var nd=new Date(curYear,curMonth+1>11?0:curMonth+1,1);
-    document.getElementById('nextCarryoverText').textContent=nd.toLocaleDateString('ko-KR',{month:'long'})+' 세부내역('+next.length+'건)을 이번 달로 가져올까요?';
+    var m2=curMonth+1>11?0:curMonth+1;
+    var y2=curMonth+1>11?curYear+1:curYear;
+    var d2=new Date(y2,m2,1);
+    document.getElementById('nextCarryoverText').textContent=d2.toLocaleDateString('ko-KR',{month:'long'})+' 세부내역('+next.length+'건)을 이번 달로 가져올까요?';
     nextBanner.style.display='flex';
   } else { nextBanner.style.display='none'; }
 }
