@@ -116,7 +116,13 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
 .fld-amt { font-size: 15px; font-weight: 700; width: 66px; text-align: right; flex-shrink: 0; }
 .fld-note { width: 40px; text-align: center; flex-shrink: 0; font-size: 12px; color: var(--muted); }
 .fixed-del { background: none; border: none; color: #ccc; cursor: pointer; font-size: 20px; padding: 2px 4px; flex-shrink: 0; }
-.fixed-add-row { padding: 12px 16px; }
+/* 필터 */
+.filter-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-btn { font-family: var(--font); font-size: 13px; font-weight: 700; background: var(--surface); border: 2px solid var(--border); border-radius: 20px; padding: 6px 14px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.filter-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+.filter-btn-sm { font-family: var(--font); font-size: 12px; font-weight: 700; background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px; cursor: pointer; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.filter-btn-sm.active { background: var(--accent); border-color: var(--accent); color: white; }
+.fixed-add-row { padding: 10px 16px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .fixed-add-btn { font-family: var(--font); font-size: 14px; color: var(--accent); background: var(--accent-light); border: none; border-radius: 10px; padding: 8px 16px; cursor: pointer; font-weight: 700; }
 .save-btn { font-family: var(--font); font-size: 16px; font-weight: 700; background: var(--accent); color: white; border: none; border-radius: 14px; padding: 15px; cursor: pointer; width: 100%; }
 .summary-box { background: var(--surface); border: 2px solid var(--border); border-radius: 18px; padding: 0 16px; }
@@ -266,6 +272,14 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
         <input class="input input-memo" id="inputMemo" placeholder="📝 메모 (선택사항)">
       </div>
       <div class="section-label">이번 달 내역</div>
+      <!-- 세부내역 필터 -->
+      <div class="filter-bar">
+        <button class="filter-btn active" id="fTxAll" onclick="setTxFilter('all')">전체</button>
+        <button class="filter-btn" id="fTxHigh" onclick="setTxFilter('high')">높은순</button>
+        <button class="filter-btn" id="fTxLow" onclick="setTxFilter('low')">낮은순</button>
+        <button class="filter-btn" id="fTxCat" onclick="setTxFilter('cat')">유형별</button>
+        <button class="filter-btn" id="fTxDate" onclick="setTxFilter('date')">날짜순</button>
+      </div>
       <div class="tx-list" id="txList"><div class="loading"><div class="spinner"></div>불러오는 중...</div></div>
     </div>
 
@@ -280,7 +294,13 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
           </div>
         </div>
         <div id="incRows"></div>
-        <div class="fixed-add-row"><button class="fixed-add-btn" id="addIncBtn">+ 항목 추가</button></div>
+        <div class="fixed-add-row">
+          <button class="fixed-add-btn" id="addIncBtn">+ 항목 추가</button>
+          <span style="flex:1"></span>
+          <button class="filter-btn-sm active" id="fIncAll" onclick="setFixFilter('inc','all')">전체</button>
+          <button class="filter-btn-sm" id="fIncHigh" onclick="setFixFilter('inc','high')">높은순</button>
+          <button class="filter-btn-sm" id="fIncLow" onclick="setFixFilter('inc','low')">낮은순</button>
+        </div>
       </div>
       <div class="fixed-card">
         <div class="fixed-card-header">
@@ -291,7 +311,13 @@ html, body { font-family: var(--font); background: var(--bg); color: var(--text)
           </div>
         </div>
         <div id="fixRows"></div>
-        <div class="fixed-add-row"><button class="fixed-add-btn" id="addFixBtn">+ 항목 추가</button></div>
+        <div class="fixed-add-row">
+          <button class="fixed-add-btn" id="addFixBtn">+ 항목 추가</button>
+          <span style="flex:1"></span>
+          <button class="filter-btn-sm active" id="fFixAll" onclick="setFixFilter('fix','all')">전체</button>
+          <button class="filter-btn-sm" id="fFixHigh" onclick="setFixFilter('fix','high')">높은순</button>
+          <button class="filter-btn-sm" id="fFixLow" onclick="setFixFilter('fix','low')">낮은순</button>
+        </div>
       </div>
       <button class="save-btn" id="saveFixedBtn">💾 저장하기</button>
       <div class="summary-box">
@@ -402,7 +428,39 @@ document.addEventListener('touchend',function(e){
   swipeDir=null;
 },{passive:true});
 
-// ── 이모지 피커 ──
+// ── 필터 ──
+var txFilter='all', incFilter='all', fixFilter='all';
+
+window.setTxFilter=function(f){
+  txFilter=f;
+  ['all','high','low','cat','date'].forEach(function(k){ document.getElementById('fTx'+k.charAt(0).toUpperCase()+k.slice(1)).className='filter-btn'+(txFilter===k?' active':''); });
+  renderTxList(curTxs());
+};
+window.setFixFilter=function(type,f){
+  if(type==='inc'){
+    incFilter=f;
+    ['all','high','low'].forEach(function(k){ document.getElementById('fInc'+k.charAt(0).toUpperCase()+k.slice(1)).className='filter-btn-sm'+(incFilter===k?' active':''); });
+  } else {
+    fixFilter=f;
+    ['all','high','low'].forEach(function(k){ document.getElementById('fFix'+k.charAt(0).toUpperCase()+k.slice(1)).className='filter-btn-sm'+(fixFilter===k?' active':''); });
+  }
+  buildFixedRows();
+};
+
+function applyTxFilter(txs){
+  var arr=txs.slice();
+  if(txFilter==='high') arr.sort(function(a,b){return b.amount-a.amount;});
+  else if(txFilter==='low') arr.sort(function(a,b){return a.amount-b.amount;});
+  else if(txFilter==='cat') arr.sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'');});
+  else if(txFilter==='date') arr.sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+  return arr;
+}
+function applyFixFilter(items,f){
+  var arr=items.slice();
+  if(f==='high') arr.sort(function(a,b){return b.amount-a.amount;});
+  else if(f==='low') arr.sort(function(a,b){return a.amount-b.amount;});
+  return arr;
+}
 var picker=document.getElementById('emojiPicker');
 EMOJIS.forEach(function(e){ var s=document.createElement('span'); s.textContent=e; s.onclick=function(){ selectedEmoji=e; document.getElementById('emojiBtn').textContent=e; picker.style.display='none'; }; picker.appendChild(s); });
 document.getElementById('emojiBtn').onclick=function(ev){ ev.stopPropagation(); picker.style.display=picker.style.display==='none'?'flex':'none'; };
@@ -542,6 +600,7 @@ function render(){
 // ── 세부내역 드래그 정렬 ──
 var dragSrcTx=null;
 function renderTxList(txs){
+  var txs=applyTxFilter(txs);
   var list=document.getElementById('txList');
   if(!txs.length){list.innerHTML='<div class="empty">아직 지출 내역이 없어요</div>';return;}
   list.innerHTML='';
@@ -615,25 +674,43 @@ function renderTxList(txs){
   });
 }
 
-// ── Fixed ──
+// ── Fixed (월별 저장) ──
 async function loadFixed(){
-  var snap=await getDocs(collection(db,'users',currentUser.uid,'fixed'));
-  var data=snap.empty?null:snap.docs[0].data();
-  incItems=(data&&data.incItems)||[{id:1,name:'봉급',amount:489},{id:2,name:'초과근무',amount:60},{id:3,name:'출장비',amount:9}];
-  fixItems=(data&&data.fixItems)||[
-    {id:1,name:'십일조',amount:49,note:''},{id:2,name:'일천·주일',amount:17.2,note:''},
-    {id:3,name:'기부',amount:5,note:''},{id:4,name:'통신비',amount:15,note:'카드'},
-    {id:5,name:'주택대출',amount:75,note:''},{id:6,name:'학예·용지회',amount:4,note:''},
-    {id:7,name:'점심식비',amount:10,note:'카드'},{id:8,name:'보험(전부)',amount:47,note:''},
-    {id:9,name:'관리비',amount:18,note:'국민'},{id:10,name:'가스비+주차비',amount:15,note:'현대'},
-    {id:11,name:'주유비',amount:20,note:'국민'},{id:12,name:'축구+피아노+미술+킥복싱',amount:44,note:'현대'},
-    {id:13,name:'대출+장모님',amount:116,note:''}
-  ];
+  var k=mkey(curMonth,curYear);
+  var col=collection(db,'users',currentUser.uid,'fixed');
+  var snap=await getDocs(col);
+  // 이번 달 데이터 찾기
+  var monthDoc=null;
+  snap.docs.forEach(function(d){ if(d.data().month===k) monthDoc=d; });
+
+  if(monthDoc){
+    incItems=monthDoc.data().incItems||[];
+    fixItems=monthDoc.data().fixItems||[];
+  } else {
+    // 이번 달 데이터 없으면 가장 최근 달 데이터 복사 (기본값)
+    var latest=null;
+    snap.docs.forEach(function(d){ if(!latest||d.data().month>latest.data().month) latest=d; });
+    if(latest){
+      incItems=JSON.parse(JSON.stringify(latest.data().incItems||[]));
+      fixItems=JSON.parse(JSON.stringify(latest.data().fixItems||[]));
+    } else {
+      incItems=[{id:1,name:'봉급',amount:489},{id:2,name:'초과근무',amount:60},{id:3,name:'출장비',amount:9}];
+      fixItems=[
+        {id:1,name:'십일조',amount:49,note:''},{id:2,name:'일천·주일',amount:17.2,note:''},
+        {id:3,name:'기부',amount:5,note:''},{id:4,name:'통신비',amount:15,note:'카드'},
+        {id:5,name:'주택대출',amount:75,note:''},{id:6,name:'학예·용지회',amount:4,note:''},
+        {id:7,name:'점심식비',amount:10,note:'카드'},{id:8,name:'보험(전부)',amount:47,note:''},
+        {id:9,name:'관리비',amount:18,note:'국민'},{id:10,name:'가스비+주차비',amount:15,note:'현대'},
+        {id:11,name:'주유비',amount:20,note:'국민'},{id:12,name:'축구+피아노+미술+킥복싱',amount:44,note:'현대'},
+        {id:13,name:'대출+장모님',amount:116,note:''}
+      ];
+    }
+  }
   buildFixedRows(); updateFixedTotals();
 }
 
 var dragSrcFix=null, dragSrcFixArr=null;
-function buildFixedRows(){ buildRows('incRows',incItems,false); buildRows('fixRows',fixItems,true); }
+function buildFixedRows(){ buildRows('incRows',applyFixFilter(incItems,incFilter),false); buildRows('fixRows',applyFixFilter(fixItems,fixFilter),true); }
 function buildRows(cid,items,hasNote){
   var container=document.getElementById(cid); container.innerHTML='';
   items.forEach(function(item,idx){
@@ -715,10 +792,16 @@ function updateFixedTotals(){
 async function saveFixed(){
   if(!currentUser) return;
   try{
+    var k=mkey(curMonth,curYear);
     var col=collection(db,'users',currentUser.uid,'fixed');
     var snap=await getDocs(col);
-    if(snap.empty){ await addDoc(col,{incItems:incItems,fixItems:fixItems}); }
-    else{ await setDoc(doc(db,'users',currentUser.uid,'fixed',snap.docs[0].id),{incItems:incItems,fixItems:fixItems}); }
+    var monthDoc=null;
+    snap.docs.forEach(function(d){ if(d.data().month===k) monthDoc=d; });
+    if(monthDoc){
+      await setDoc(doc(db,'users',currentUser.uid,'fixed',monthDoc.id),{month:k,incItems:incItems,fixItems:fixItems});
+    } else {
+      await addDoc(col,{month:k,incItems:incItems,fixItems:fixItems});
+    }
     showToast('저장됐어요 ✓');
   } catch(e){ showToast('저장 실패: '+e.message); }
 }
