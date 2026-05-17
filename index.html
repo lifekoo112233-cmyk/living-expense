@@ -710,48 +710,55 @@ async function loadFixed(){
 }
 
 var dragSrcFix=null, dragSrcFixArr=null;
-function buildFixedRows(){ buildRows('incRows',applyFixFilter(incItems,incFilter),false); buildRows('fixRows',applyFixFilter(fixItems,fixFilter),true); }
-function buildRows(cid,items,hasNote){
+
+// 필터는 표시용으로만 - 원본 배열은 항상 incItems/fixItems
+function buildFixedRows(){
+  buildRows('incRows', incItems, applyFixFilter(incItems,incFilter), false);
+  buildRows('fixRows', fixItems, applyFixFilter(fixItems,fixFilter), true);
+}
+
+function buildRows(cid, originalItems, displayItems, hasNote){
   var container=document.getElementById(cid); container.innerHTML='';
-  items.forEach(function(item,idx){
+  displayItems.forEach(function(item){
+    // 원본 배열에서 실제 인덱스 찾기
+    var origIdx = originalItems.findIndex(function(o){ return o.id===item.id; });
     var row=document.createElement('div'); row.className='fixed-row';
     row.draggable=true;
 
-    // 드래그 핸들
     var handle=document.createElement('span'); handle.className='fix-drag'; handle.textContent='⠿';
 
     var ni=document.createElement('input'); ni.className='fld fld-name'; ni.placeholder='항목명'; ni.value=item.name||'';
-    ni.addEventListener('input',function(){items[idx].name=this.value;});
+    ni.addEventListener('input',function(){ if(origIdx>=0) originalItems[origIdx].name=this.value; });
     var ai=document.createElement('input'); ai.className='fld fld-amt'; ai.type='number'; ai.step='0.1'; ai.placeholder='0'; ai.value=item.amount||'';
-    ai.addEventListener('input',function(){items[idx].amount=parseFloat(this.value)||0;updateFixedTotals();});
+    ai.addEventListener('input',function(){ if(origIdx>=0){ originalItems[origIdx].amount=parseFloat(this.value)||0; updateFixedTotals(); } });
     var db2=document.createElement('button'); db2.className='fixed-del'; db2.textContent='×';
-    db2.addEventListener('click',function(){items.splice(idx,1);buildFixedRows();updateFixedTotals();});
+    db2.addEventListener('click',function(){ if(origIdx>=0) originalItems.splice(origIdx,1); buildFixedRows(); updateFixedTotals(); });
 
     row.appendChild(handle); row.appendChild(ni); row.appendChild(ai);
     if(hasNote){
       var note=document.createElement('input'); note.className='fld fld-note'; note.placeholder='비고'; note.value=item.note||'';
-      note.addEventListener('input',function(){items[idx].note=this.value;});
+      note.addEventListener('input',function(){ if(origIdx>=0) originalItems[origIdx].note=this.value; });
       row.appendChild(note);
     }
     row.appendChild(db2);
 
     // 데스크톱 드래그
-    row.addEventListener('dragstart',function(e){ if(e.target===handle||e.target===row){dragSrcFix=idx;dragSrcFixArr=items;row.classList.add('dragging');} else e.preventDefault(); });
+    row.addEventListener('dragstart',function(e){ if(e.target===handle||e.target===row){dragSrcFix=origIdx;dragSrcFixArr=originalItems;row.classList.add('dragging');} else e.preventDefault(); });
     row.addEventListener('dragend',function(){ row.classList.remove('dragging'); container.querySelectorAll('.fixed-row').forEach(function(r){r.classList.remove('drag-over');}); });
     row.addEventListener('dragover',function(e){ e.preventDefault(); row.classList.add('drag-over'); });
     row.addEventListener('dragleave',function(){ row.classList.remove('drag-over'); });
     row.addEventListener('drop',function(e){
       e.preventDefault(); row.classList.remove('drag-over');
-      if(dragSrcFix===null||dragSrcFixArr!==items) return;
-      var moved=items.splice(dragSrcFix,1)[0];
-      items.splice(idx,0,moved);
+      if(dragSrcFix===null||dragSrcFixArr!==originalItems) return;
+      var moved=originalItems.splice(dragSrcFix,1)[0];
+      originalItems.splice(origIdx,0,moved);
       buildFixedRows(); updateFixedTotals();
     });
 
     // 터치 드래그
-    handle.addEventListener('touchstart',function(e){ dragSrcFix=idx; dragSrcFixArr=items; row.classList.add('dragging'); e.stopPropagation(); },{passive:true});
+    handle.addEventListener('touchstart',function(e){ dragSrcFix=origIdx; dragSrcFixArr=originalItems; row.classList.add('dragging'); e.stopPropagation(); },{passive:true});
     document.addEventListener('touchmove',function(e){
-      if(dragSrcFix===null||dragSrcFixArr!==items) return;
+      if(dragSrcFix===null||dragSrcFixArr!==originalItems) return;
       var y=e.touches[0].clientY;
       var rows=[].slice.call(container.querySelectorAll('.fixed-row'));
       rows.forEach(function(r){r.classList.remove('drag-over');});
@@ -759,15 +766,15 @@ function buildRows(cid,items,hasNote){
       if(target&&target!==row) target.classList.add('drag-over');
     },{passive:true});
     document.addEventListener('touchend',function(e){
-      if(dragSrcFix===null||dragSrcFixArr!==items) return;
+      if(dragSrcFix===null||dragSrcFixArr!==originalItems) return;
       var y=e.changedTouches[0].clientY;
       var rows=[].slice.call(container.querySelectorAll('.fixed-row'));
       var targetRow=rows.find(function(r){ var rect=r.getBoundingClientRect(); return y>=rect.top&&y<=rect.bottom; });
       if(targetRow){
         var toIdx=rows.indexOf(targetRow);
         if(toIdx!==dragSrcFix){
-          var moved=items.splice(dragSrcFix,1)[0];
-          items.splice(toIdx,0,moved);
+          var moved=originalItems.splice(dragSrcFix,1)[0];
+          originalItems.splice(toIdx,0,moved);
           buildFixedRows(); updateFixedTotals();
         }
       }
@@ -795,12 +802,16 @@ async function saveFixed(){
     var k=mkey(curMonth,curYear);
     var col=collection(db,'users',currentUser.uid,'fixed');
     var snap=await getDocs(col);
-    var monthDoc=null;
-    snap.docs.forEach(function(d){ if(d.data().month===k) monthDoc=d; });
-    if(monthDoc){
-      await setDoc(doc(db,'users',currentUser.uid,'fixed',monthDoc.id),{month:k,incItems:incItems,fixItems:fixItems});
+    var monthDocId=null;
+    snap.docs.forEach(function(d){
+      if(d.data().month===k) monthDocId=d.id;
+    });
+    if(monthDocId){
+      await setDoc(doc(db,'users',currentUser.uid,'fixed',monthDocId),
+        {month:k, incItems:JSON.parse(JSON.stringify(incItems)), fixItems:JSON.parse(JSON.stringify(fixItems))});
     } else {
-      await addDoc(col,{month:k,incItems:incItems,fixItems:fixItems});
+      await addDoc(col,
+        {month:k, incItems:JSON.parse(JSON.stringify(incItems)), fixItems:JSON.parse(JSON.stringify(fixItems))});
     }
     showToast('저장됐어요 ✓');
   } catch(e){ showToast('저장 실패: '+e.message); }
