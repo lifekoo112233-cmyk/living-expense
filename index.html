@@ -976,17 +976,74 @@ function renderPort(){
   document.getElementById('portHero').innerHTML=`<div class="hero-label">총 평가액</div><div class="hero-val">₩${fmtK(totalEval)}</div><div class="hero-grid"><div class="hero-mini"><div class="mini-label">총 손익</div><div class="mini-val ${up?'pgreen':'pred'}">${up?'+':''}₩${fmtK(pnl)}</div><div class="mini-sub ${up?'pgreen':'pred'}">${fmtP(pct)}</div></div><div class="hero-mini"><div class="mini-label">투자 원금</div><div class="mini-val">₩${fmtK(totalCost)}</div></div><div class="hero-mini"><div class="mini-label">종목 수</div><div class="mini-val">${stocks.length}개</div></div></div>`;
   if(!stocks.length){document.getElementById('stockList').innerHTML='<div style="padding:30px;text-align:center;color:var(--muted);font-size:13px">📊 종목을 추가해보세요</div>';document.getElementById('allocCard').style.display='none';return;}
   document.getElementById('stockList').innerHTML=stocks.map((s,i)=>{
-    const cur=s.cur||s.avg;const ev=s.qty*cur;const pnl=(cur-s.avg)*s.qty;const pct=(cur-s.avg)/s.avg*100;const up=pnl>=0;const noP=!s.cur;
-    return `<div class="stock-item"><div class="stock-top"><div><div class="s-name">${s.name}</div><div class="s-code">${s.ticker||'직접입력'} · ${s.qty}주${s.usd?' · USD':''}</div></div><div style="text-align:right"><div class="s-eval">₩${fmtK(ev)}</div><span class="s-badge ${noP?'bn':(up?'bg':'br')}">${noP?'가격없음':fmtP(pct)}</span></div><div style="display:flex;align-items:center;gap:4px;margin-left:8px"><button class="del-btn" onclick="delStock(${i})" style="font-size:18px">×</button></div></div><div class="s-grid"><div class="s-cell"><div class="s-cell-label">평단가</div><div class="s-cell-val">₩${fmtK(s.avg)}</div></div><div class="s-cell"><div class="s-cell-label">현재가</div><div class="s-cell-val editable" onclick="editPrice(${i})">₩${s.cur?fmtK(s.cur):'입력'} ✎</div></div><div class="s-cell"><div class="s-cell-label">손익</div><div class="s-cell-val ${noP?'':(up?'pgreen':'pred')}">${noP?'-':(up?'+':'')+'₩'+fmtK(pnl)}</div></div></div></div>`;
+    const cur=s.cur||s.avg;const ev=s.qty*cur;const spnl=(cur-s.avg)*s.qty;const spct=(cur-s.avg)/s.avg*100;const up=spnl>=0;const noP=!s.cur;
+    return `<div class="stock-item">
+      <div class="stock-top">
+        <div><div class="s-name">${s.name}</div><div class="s-code">${s.ticker||'직접입력'} · ${s.qty}주${s.usd?' · USD':''}</div></div>
+        <div style="text-align:right"><div class="s-eval">₩${fmtK(ev)}</div><span class="s-badge ${noP?'bn':(up?'bg':'br')}">${noP?'가격없음':fmtP(spct)}</span></div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-left:8px">
+          <button class="del-btn" style="font-size:14px;color:var(--muted)" onclick="toggleEditStock(${i})">✎</button>
+          <button class="del-btn" style="font-size:18px" onclick="delStock(${i})">×</button>
+        </div>
+      </div>
+      <div class="s-grid">
+        <div class="s-cell"><div class="s-cell-label">평단가</div><div class="s-cell-val">₩${fmtK(s.avg)}</div></div>
+        <div class="s-cell"><div class="s-cell-label">현재가</div><div class="s-cell-val ${noP?'editable':''}" onclick="editPrice(${i})">₩${s.cur?fmtK(s.cur):'탭하여입력'}${noP?' ✎':''}</div></div>
+        <div class="s-cell"><div class="s-cell-label">손익</div><div class="s-cell-val ${noP?'':(up?'pgreen':'pred')}">${noP?'-':(up?'+':'')+'₩'+fmtK(spnl)}</div></div>
+      </div>
+      <div id="edit-${i}" style="display:none;margin-top:10px;background:var(--bg);border-radius:12px;padding:12px;display:none">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:10px;letter-spacing:.04em">✎ 종목 수정</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">종목명</div>
+            <input id="en-${i}" value="${esc(s.name)}" style="width:100%;font-size:14px;padding:9px 11px;border:2px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);outline:none;font-family:var(--font)">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">수량 (주)</div>
+            <input id="eq-${i}" type="number" value="${s.qty}" min="1" inputmode="numeric" style="width:100%;font-size:14px;padding:9px 11px;border:2px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);outline:none;font-family:var(--font)">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div>
+            <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">평단가 (원)</div>
+            <input id="ea-${i}" type="number" value="${s.avg}" min="1" inputmode="numeric" style="width:100%;font-size:14px;padding:9px 11px;border:2px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);outline:none;font-family:var(--font)">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">현재가 (원)</div>
+            <input id="ec-${i}" type="number" value="${s.cur||''}" min="1" inputmode="numeric" placeholder="미입력시 유지" style="width:100%;font-size:14px;padding:9px 11px;border:2px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);outline:none;font-family:var(--font)">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button onclick="closeEditStock(${i})" style="padding:10px;border:2px solid var(--border);border-radius:10px;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font);font-size:14px;font-weight:700">취소</button>
+          <button onclick="saveEditStock(${i})" style="padding:10px;border:2px solid var(--accent);border-radius:10px;background:var(--accent);color:#fff;cursor:pointer;font-family:var(--font);font-size:14px;font-weight:700">저장</button>
+        </div>
+      </div>
+    </div>`;
   }).join('');
   document.getElementById('allocCard').style.display='block';
   const maxEv=Math.max(...stocks.map(s=>s.qty*(s.cur||s.avg)));
   document.getElementById('allocBars').innerHTML=stocks.map((s,i)=>{const ev=s.qty*(s.cur||s.avg);const alloc=totalEval?ev/totalEval*100:0;const w=maxEv?ev/maxEv*100:0;return `<div class="alloc-row"><div class="alloc-hd"><span class="alloc-name">${s.name}</span><span class="alloc-pct">${alloc.toFixed(1)}%</span></div><div class="alloc-bg"><div class="alloc-fill" style="width:${w.toFixed(1)}%;background:${COLORS[i%COLORS.length]}"></div></div></div>`;}).join('');
 }
 
-window.delStock=function(i){if(confirm(stocks[i].name+' 삭제할까요?')){stocks.splice(i,1);saveStocks();renderPort();}};
-window.editPrice=function(i){const p=prompt(stocks[i].name+' 현재가 (원):');if(p&&!isNaN(+p)&&+p>0){stocks[i].cur=+p;saveStocks();renderPort();}};
-
+window.toggleEditStock=function(i){
+  const el=document.getElementById('edit-'+i);
+  const isOpen=el.style.display==='block';
+  // 다른 열린 폼 닫기
+  stocks.forEach((_,idx)=>{const f=document.getElementById('edit-'+idx);if(f)f.style.display='none';});
+  el.style.display=isOpen?'none':'block';
+};
+window.closeEditStock=function(i){document.getElementById('edit-'+i).style.display='none';};
+window.saveEditStock=function(i){
+  const name=document.getElementById('en-'+i)?.value.trim();
+  const qty=parseInt(document.getElementById('eq-'+i)?.value);
+  const avg=parseInt(document.getElementById('ea-'+i)?.value);
+  const cur=parseInt(document.getElementById('ec-'+i)?.value)||stocks[i].cur;
+  if(!name){toast('종목명을 입력해주세요');return;}
+  if(!qty||qty<=0){toast('수량을 입력해주세요');return;}
+  if(!avg||avg<=0){toast('평단가를 입력해주세요');return;}
+  stocks[i].name=name;stocks[i].qty=qty;stocks[i].avg=avg;stocks[i].cur=cur||0;
+  saveStocks();renderPort();toast('수정됐어요 ✓');
+};
 // 종목 추가
 window.togglePortForm=function(){portFormOpen=!portFormOpen;document.getElementById('portFormArea').style.display=portFormOpen?'block':'none';if(portFormOpen){selStock=null;['fSearch','fQty','fAvg','fCur'].forEach(id=>document.getElementById(id).value='');document.getElementById('selTag').style.display='none';document.getElementById('searchDrop').style.display='none';document.getElementById('fCurHint').textContent='(종목 선택 시 자동조회)';setTimeout(()=>document.getElementById('fSearch').focus(),100);}};
 
