@@ -1047,11 +1047,12 @@ window.toggleEditStock=function(i){
 window.closeEditStock=function(i){document.getElementById('edit-'+i).style.display='none';};
 window.saveEditStock=function(i){
   const name=document.getElementById('en-'+i)?.value.trim();
-  const qty=parseInt(document.getElementById('eq-'+i)?.value);
+  const qtyRaw=document.getElementById('eq-'+i)?.value;
+  const qty=parseInt(qtyRaw);
   const avg=parseInt(document.getElementById('ea-'+i)?.value);
   const cur=parseInt(document.getElementById('ec-'+i)?.value)||stocks[i].cur;
   if(!name){toast('종목명을 입력해주세요');return;}
-  if(!qty||qty<=0){toast('수량을 입력해주세요');return;}
+  if(qtyRaw===''||isNaN(qty)||qty<0){toast('수량을 입력해주세요');return;}
   if(!avg||avg<=0){toast('평단가를 입력해주세요');return;}
   stocks[i].name=name;stocks[i].qty=qty;stocks[i].avg=avg;stocks[i].cur=cur||0;
   saveStocks();renderPort();toast('수정됐어요 ✓');
