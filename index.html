@@ -221,6 +221,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .bn{background:var(--bg);color:var(--muted)}
 .del-btn{background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;padding:0 0 0 8px}
 .del-btn:active{color:var(--danger)}
+.del-btn:disabled{opacity:.25;cursor:default;pointer-events:none}
 .s-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .s-cell{background:var(--bg);border-radius:10px;padding:9px 11px}
 .s-cell-label{font-size:10px;color:var(--muted);margin-bottom:3px;font-weight:500}
@@ -993,7 +994,9 @@ function renderPort(){
       <div class="stock-top">
         <div><div class="s-name">${s.name}</div><div class="s-code">${s.ticker||'직접입력'} · ${s.qty}주${s.usd?' · USD':''}</div></div>
         <div style="text-align:right"><div class="s-eval">₩${fmtK(ev)}</div><span class="s-badge ${noP?'bn':(up?'bg':'br')}">${noP?'가격없음':fmtP(spct)}</span></div>
-        <div style="display:flex;flex-direction:column;gap:4px;margin-left:8px">
+        <div style="display:flex;flex-direction:column;gap:3px;margin-left:8px;align-items:center">
+          <button class="del-btn" style="font-size:13px;color:var(--muted)" onclick="moveStock(${i},-1)" ${i===0?'disabled':''}>▲</button>
+          <button class="del-btn" style="font-size:13px;color:var(--muted)" onclick="moveStock(${i},1)" ${i===stocks.length-1?'disabled':''}>▼</button>
           <button class="del-btn" style="font-size:14px;color:var(--muted)" onclick="toggleEditStock(${i})">✎</button>
           <button class="del-btn" style="font-size:18px" onclick="delStock(${i})">×</button>
         </div>
@@ -1056,6 +1059,12 @@ window.saveEditStock=function(i){
   if(!avg||avg<=0){toast('평단가를 입력해주세요');return;}
   stocks[i].name=name;stocks[i].qty=qty;stocks[i].avg=avg;stocks[i].cur=cur||0;
   saveStocks();renderPort();toast('수정됐어요 ✓');
+};
+window.moveStock=function(i,dir){
+  const j=i+dir;
+  if(j<0||j>=stocks.length)return;
+  [stocks[i],stocks[j]]=[stocks[j],stocks[i]];
+  saveStocks();renderPort();
 };
 window.delStock=function(i){
   const s=stocks[i];if(!s)return;
