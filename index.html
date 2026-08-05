@@ -160,7 +160,11 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .is-pct{font-size:12px;color:var(--muted);font-weight:600;text-align:right}
 .chart-box{background:var(--surface);border:2px solid var(--border);border-radius:16px;padding:16px}
 .chart-title{font-size:14px;color:var(--muted);font-weight:700;margin-bottom:12px}
-.bar-chart{display:flex;align-items:flex-end;gap:6px;height:110px}
+.chart-wrap{position:relative;padding-right:38px}
+.chart-grid{position:absolute;top:0;left:0;right:38px;height:110px;pointer-events:none}
+.chart-grid-line{position:absolute;left:0;right:0;border-top:1px dashed var(--border)}
+.chart-grid-label{position:absolute;right:-38px;width:34px;text-align:right;font-size:10px;color:var(--muted);font-weight:600;transform:translateY(-50%)}
+.bar-chart{position:relative;display:flex;align-items:flex-end;gap:6px;height:110px}
 .chart-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
 .chart-bar-wrap{width:100%;flex:1;display:flex;align-items:flex-end;gap:2px}
 .chart-bar{flex:1;border-radius:3px 3px 0 0;min-height:3px}
@@ -461,7 +465,10 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
     <div class="income-summary" id="incomeSummary"></div>
     <div class="chart-box">
       <div class="chart-title">6개월 지출 추이</div>
-      <div class="bar-chart" id="monthlyChart"></div>
+      <div class="chart-wrap">
+        <div class="chart-grid" id="chartGrid"></div>
+        <div class="bar-chart" id="monthlyChart"></div>
+      </div>
       <div class="chart-legend">
         <div class="legend-item"><div class="legend-dot" style="background:rgba(37,99,235,.4)"></div>수입</div>
         <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>지출</div>
@@ -651,6 +658,7 @@ const fmt=n=>'₩'+Math.round(n).toLocaleString('ko-KR');
 const fmtK=n=>Math.round(n).toLocaleString('ko-KR');
 const fmtP=n=>(n>=0?'+':'')+n.toFixed(2)+'%';
 const fmtM=n=>{const v=parseFloat(n)||0;return (v<0?'-':'')+Math.abs(v).toLocaleString('ko-KR',{maximumFractionDigits:1})+'만';};
+const fmtWonToMan=n=>Math.round((n||0)/10000).toLocaleString('ko-KR')+'만';
 const sumA=a=>a.reduce((s,i)=>s+(parseFloat(i.amount)||0),0);
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 const deep=o=>JSON.parse(JSON.stringify(o));
@@ -821,6 +829,7 @@ async function loadMonthFix(){
     if(snap.exists()){mfInc=deep(snap.data().incItems||[]);mfFix=deep(snap.data().fixItems||[]);hasMf=true;}
     else{mfInc=[];mfFix=[];hasMf=false;}
     if(curPage===2)renderMonthFix();
+    if(curPage===3)renderReport();
   }catch(e){console.error(e);}
 }
 async function saveMonthFix(){
@@ -920,6 +929,9 @@ async function renderReport(){
     `<div class="chart-bar inc" style="height:${Math.max(Math.round(m.inc/maxV*100),3)}%"></div>`+
     `<div class="chart-bar exp${m.isCur?' cur':''}" style="height:${Math.max(Math.round(m.exp/maxV*100),3)}%"></div>`+
     `</div><div class="chart-month">${m.label}</div></div>`).join('');
+  const gridSteps=[{top:0,val:maxV},{top:50,val:maxV/2},{top:100,val:0}];
+  document.getElementById('chartGrid').innerHTML=gridSteps.map(g=>
+    `<div class="chart-grid-line" style="top:${g.top}%"><span class="chart-grid-label">${fmtWonToMan(g.val)}</span></div>`).join('');
 
   // 카테고리 분석
   const tot=expenseTotal||1,cats={};
@@ -991,7 +1003,7 @@ function renderPort(){
         <div class="s-cell"><div class="s-cell-label">현재가</div><div class="s-cell-val ${noP?'editable':''}" onclick="editPrice(${i})">₩${s.cur?fmtK(s.cur):'탭하여입력'}${noP?' ✎':''}</div></div>
         <div class="s-cell"><div class="s-cell-label">손익</div><div class="s-cell-val ${noP?'':(up?'pgreen':'pred')}">${noP?'-':(up?'+':'')+'₩'+fmtK(spnl)}</div></div>
       </div>
-      <div id="edit-${i}" style="display:none;margin-top:10px;background:var(--bg);border-radius:12px;padding:12px;display:none">
+      <div id="edit-${i}" style="display:none;margin-top:10px;background:var(--bg);border-radius:12px;padding:12px">
         <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:10px;letter-spacing:.04em">✎ 종목 수정</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
           <div>
@@ -1043,6 +1055,12 @@ window.saveEditStock=function(i){
   if(!avg||avg<=0){toast('평단가를 입력해주세요');return;}
   stocks[i].name=name;stocks[i].qty=qty;stocks[i].avg=avg;stocks[i].cur=cur||0;
   saveStocks();renderPort();toast('수정됐어요 ✓');
+};
+window.delStock=function(i){
+  const s=stocks[i];if(!s)return;
+  if(!confirm(`'${s.name}' 종목을 삭제할까요?`))return;
+  stocks.splice(i,1);
+  saveStocks();renderPort();toast('삭제됐어요 ✓');
 };
 // 종목 추가
 window.togglePortForm=function(){portFormOpen=!portFormOpen;document.getElementById('portFormArea').style.display=portFormOpen?'block':'none';if(portFormOpen){selStock=null;['fSearch','fQty','fAvg','fCur'].forEach(id=>document.getElementById(id).value='');document.getElementById('selTag').style.display='none';document.getElementById('searchDrop').style.display='none';document.getElementById('fCurHint').textContent='(종목 선택 시 자동조회)';setTimeout(()=>document.getElementById('fSearch').focus(),100);}};
