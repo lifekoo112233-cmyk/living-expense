@@ -201,6 +201,21 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .top-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .top-sub{font-size:11px;color:var(--muted);font-weight:500;margin-top:1px}
 .top-amt{font-size:14px;font-weight:900;flex-shrink:0}
+.grp{border-top:1px solid var(--border);padding-top:10px}
+.grp:first-of-type{border-top:none;padding-top:0}
+.grp-hd{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none}
+.grp-hd::-webkit-details-marker{display:none}
+.grp-hd .cat-amt{width:auto;min-width:64px}
+.grp-body{display:flex;flex-direction:column;gap:7px;margin:9px 0 2px 36px}
+.grp-row{display:flex;align-items:center;gap:7px;font-size:13px}
+.grp-name{flex:0 1 auto;min-width:0;max-width:40%;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grp-cnt{font-size:11px;color:var(--muted);flex-shrink:0}
+.grp-bar{flex:1;min-width:20px;height:4px;background:var(--border);border-radius:99px;overflow:hidden}
+.grp-bar>div{height:100%;border-radius:99px;opacity:.75}
+.grp-pct{font-size:11px;color:var(--muted);font-weight:700;width:30px;text-align:right;flex-shrink:0}
+.grp-amt{font-weight:800;min-width:58px;text-align:right;flex-shrink:0}
+.grp-row.more{color:var(--muted)}
+.grp-row.more .grp-name{max-width:none;flex:1;font-weight:500}
 .chart-legend{display:flex;gap:12px;justify-content:center;margin-top:10px}
 .legend-item{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:var(--muted)}
 .legend-dot{width:10px;height:10px;border-radius:3px}
@@ -959,7 +974,7 @@ async function loadMfIncomeMap(){
   return map;
 }
 const statCard=(label,val,sub,cls='',wide=false)=>
-  `<div class="stat-card${wide?' wide':''}"><div class="stat-label">${label}</div><div class="stat-val ${cls}">${val}</div>${sub?`<div class="stat-sub">${sub}</div>`:''}</div>`;
+  `<div class="stat-card${wide?' wide':''}"><div class="stat-label">${label}</div><div class="stat-val ${cls}">${val}</div>${[].concat(sub||[]).filter(Boolean).map(x=>`<div class="stat-sub">${x}</div>`).join('')}</div>`;
 
 async function renderReport(resetScroll=true){
   const tok=++reportTok;
@@ -1057,7 +1072,8 @@ async function renderReport(resetScroll=true){
     cmpSub=`전월 ${fmtAmt(prevExp)} · ${p>=0?'+':''}${p.toFixed(1)}%`;
     cmpCls=diff>0?'up':diff<0?'down':'';
   }
-  const rate=incomeTotal>0?Math.round(remain/incomeTotal*100):null;
+  const prevCnt=allExp.filter(t=>t.date.slice(0,7)===prevMk()).length;
+  const cntSub=`지출 ${txs.length}건${prevCnt?` (전월 ${prevCnt}건)`:''}`;
   const byName={},catM={};
   txs.forEach(t=>{
     const n=(t.name||'').trim()||'(이름없음)';
@@ -1068,10 +1084,8 @@ async function renderReport(resetScroll=true){
   const topCatM=Object.entries(catM).sort((a,b)=>b[1]-a[1])[0];
   document.getElementById('statsMonth').innerHTML=
     `<div class="stat-title">${curM+1}월 한눈에</div><div class="stat-grid">`+
-    statCard('전월 대비',cmpVal,cmpSub,cmpCls)+
+    statCard('전월 대비',cmpVal,[cmpSub,cntSub],cmpCls)+
     statCard('일평균 지출',fmtAmt(perDay),isNow&&expenseTotal>0?`이 속도면 월 약 ${fmtAmt(perDay*daysIn)}`:`${days}일 기준`)+
-    statCard('저축률',rate===null?'-':rate+'%',rate===null?'이달 수입 정보 없음':`남은 금액 ${fmtAmt(remain)}`,rate!==null&&rate<0?'up':'')+
-    statCard('지출 건수',txs.length+'건',txs.length?`건당 평균 ${fmtAmt(expenseTotal/txs.length)}`:'')+
     statCard('최고 지출 항목',topItem?`${esc(topItem[0])} ${fmtAmt(topItem[1].amt)}`:'-',
       topItem?`${topItem[1].cnt}건 합산 · 전체 지출의 ${Math.round(topItem[1].amt/expenseTotal*100)}%`:'','',true)+
     statCard('가장 많이 쓴 카테고리',topCatM?`${ci(topCatM[0])} ${esc(topCatM[0])} ${fmtAmt(topCatM[1])}`:'-',
@@ -1095,13 +1109,33 @@ async function renderReport(resetScroll=true){
     const n=(t.name||'').trim()||'(이름없음)';const k=t.date.slice(0,7);
     const a=byNM[n+'|'+k]||(byNM[n+'|'+k]={name:n,k,amt:0,cnt:0});a.amt+=t.amount;a.cnt++;
     const b=byAll[n]||(byAll[n]={name:n,amt:0,cnt:0,ms:new Set()});b.amt+=t.amount;b.cnt++;b.ms.add(k);
-    catAll[t.cat]=(catAll[t.cat]||0)+t.amount;allTotal+=t.amount;
+    const c=catAll[t.cat]||(catAll[t.cat]={amt:0,items:{}});c.amt+=t.amount;
+    const it=c.items[n]||(c.items[n]={amt:0,cnt:0});it.amt+=t.amount;it.cnt++;
+    allTotal+=t.amount;
   });
   const hiMonth=data.filter(d=>d.exp>0).sort((a,b)=>b.exp-a.exp)[0];
   const loMonth=base.length>1?[...base].sort((a,b)=>a.exp-b.exp)[0]:null;
   const topNM=Object.values(byNM).sort((a,b)=>b.amt-a.amt)[0];
   const top5=Object.values(byAll).sort((a,b)=>b.amt-a.amt).slice(0,5);
-  const topCatAll=Object.entries(catAll).sort((a,b)=>b[1]-a[1])[0];
+  const catList=Object.entries(catAll).sort((a,b)=>b[1].amt-a[1].amt);
+  const catHtml=catList.map(([c,o])=>{
+    const items=Object.entries(o.items).sort((a,b)=>b[1].amt-a[1].amt);
+    const shown=items.slice(0,8),rest=items.slice(8);
+    const restAmt=rest.reduce((s,[,v])=>s+v.amt,0);
+    const pc=Math.round(o.amt/allTotal*100);
+    return `<details class="grp" open><summary class="grp-hd">`+
+      `<span class="cat-icon">${ci(c)}</span><div class="cat-info"><span class="cat-name">${esc(c)}</span>`+
+      `<div class="cat-bar-track"><div class="cat-bar-fill" style="width:${pc}%;background:${cc(c)}"></div></div></div>`+
+      `<span class="cat-pct">${pc<1?'<1':pc}%</span><span class="cat-amt">${fmtAmt(o.amt)}</span></summary>`+
+      `<div class="grp-body">`+shown.map(([n,v])=>{
+        const ip=Math.round(v.amt/o.amt*100);
+        return `<div class="grp-row"><span class="grp-name">${esc(n)}</span><span class="grp-cnt">${v.cnt}건</span>`+
+          `<div class="grp-bar"><div style="width:${ip}%;background:${cc(c)}"></div></div>`+
+          `<span class="grp-pct">${ip}%</span><span class="grp-amt">${fmtAmt(v.amt)}</span></div>`;
+      }).join('')+
+      (rest.length?`<div class="grp-row more"><span class="grp-name">그 외 ${rest.length}개 항목</span><span class="grp-amt">${fmtAmt(restAmt)}</span></div>`:'')+
+      `</div></details>`;
+  }).join('');
   const monthCnt=Object.keys(expByMonth).length;
   const excludesNow=comp.length>0&&expByMonth[nowKey]>0;
   document.getElementById('statsAll').innerHTML=
@@ -1112,9 +1146,9 @@ async function renderReport(resetScroll=true){
     statCard('누적 지출 합계',allTotal?fmtAmt(allTotal):'-',monthCnt?`${monthCnt}개월 기록`:'')+
     statCard('최고 지출 항목',topNM?`${esc(topNM.name)} ${fmtAmt(topNM.amt)}`:'-',
       topNM?`(${ymLabel(topNM.k)}) · ${topNM.cnt}건 합산`:'','',true)+
-    statCard('누적 최다 카테고리',topCatAll?`${ci(topCatAll[0])} ${esc(topCatAll[0])} ${fmtAmt(topCatAll[1])}`:'-',
-      topCatAll&&allTotal?`누적 지출의 ${Math.round(topCatAll[1]/allTotal*100)}%`:'','',true)+
     `</div>`+
+    `<div class="cat-box"><div class="chart-title">분야별 누적 지출 <span class="chart-hint">눌러서 접기/펼치기</span></div>`+
+    (catList.length?catHtml:'<div class="empty">데이터가 없어요</div>')+`</div>`+
     `<div class="cat-box"><div class="chart-title">많이 쓴 항목 TOP 5 (누적)</div>`+
     (top5.length?top5.map((o,i)=>
       `<div class="top-row"><span class="top-rank">${i+1}</span><div class="top-info"><div class="top-name">${esc(o.name)}</div><div class="top-sub">${o.ms.size}개월 · ${o.cnt}건</div></div><span class="top-amt">${fmtAmt(o.amt)}</span></div>`).join(''):'<div class="empty">데이터가 없어요</div>')+
