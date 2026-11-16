@@ -358,7 +358,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cd-row.cancel .cd-amt,.cd-row.cancel .cd-mer{color:var(--muted)}
 .grp-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .seg{display:flex;background:var(--bg);border:2px solid var(--border);border-radius:10px;padding:2px;flex-shrink:0}
-.seg button{font-family:var(--font);font-size:12px;font-weight:700;border:none;background:none;color:var(--muted);padding:5px 12px;border-radius:7px;cursor:pointer}
+.seg button{font-family:var(--font);font-size:12px;font-weight:700;border:none;background:none;color:var(--muted);padding:5px 10px;border-radius:7px;cursor:pointer}
 .seg button.on{background:var(--accent);color:#fff}
 .grp-nav{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-radius:12px;padding:8px 10px}
 .grp-nav .month-btn{width:32px;height:32px;font-size:16px;background:var(--surface)}
@@ -1175,7 +1175,7 @@ async function renderReport(resetScroll=true){
   const monthCnt=Object.keys(expByMonth).length;
   const excludesNow=comp.length>0&&expByMonth[nowKey]>0;
   rptExp=allExp;
-  if(resetScroll||!grpKey)grpKey=key;          // 상단에서 달을 바꾸면 월별 보기도 그 달로
+  if(resetScroll||!grpKey){grpKey=key;grpYear=curY;}   // 상단에서 달을 바꾸면 월별·연간 보기도 그 달/해로
   document.getElementById('statsAll').innerHTML=
     `<div class="stat-title">누적 기록</div><div class="stat-grid">`+
     statCard('최고 지출월',hiMonth?fmtAmt(hiMonth.exp):'-',hiMonth?ymLabel(hiMonth.k):'')+
@@ -1192,10 +1192,10 @@ async function renderReport(resetScroll=true){
 }
 
 // ── 분야별 지출 (전체 / 월별) ──
-let grpMode='all',grpKey=null,rptExp=[];
+let grpMode='all',grpKey=null,grpYear=new Date().getFullYear(),rptExp=[];
 function renderGrp(){
   const box=document.getElementById('grpBox');if(!box)return;
-  const list=grpMode==='all'?rptExp:rptExp.filter(t=>t.date.slice(0,7)===grpKey);
+  const list=grpMode==='all'?rptExp:grpMode==='year'?rptExp.filter(t=>+t.date.slice(0,4)===grpYear):rptExp.filter(t=>t.date.slice(0,7)===grpKey);
   const total=list.reduce((s,t)=>s+t.amount,0);
   const catAll={};
   list.forEach(t=>{
@@ -1224,15 +1224,19 @@ function renderGrp(){
   }).join('');
   const months=new Set(rptExp.map(t=>t.date.slice(0,7))).size;
   const y=+grpKey.slice(0,4),m=+grpKey.slice(5);
+  const yMonths=grpMode==='year'?new Set(list.map(t=>t.date.slice(0,7))).size:0;
   box.innerHTML=
     `<div class="grp-top"><div class="chart-title" style="margin:0">분야별 누적 지출</div>`+
-      `<div class="seg"><button class="${grpMode==='all'?'on':''}" onclick="setGrpMode('all')">전체</button><button class="${grpMode==='month'?'on':''}" onclick="setGrpMode('month')">월별</button></div></div>`+
+      `<div class="seg">`+[['all','전체'],['year','연간'],['month','월별']].map(([k,l])=>`<button class="${grpMode===k?'on':''}" onclick="setGrpMode('${k}')">${l}</button>`).join('')+`</div></div>`+
     (grpMode==='month'
       ?`<div class="grp-nav"><button class="month-btn" onclick="grpMove(-1)">&#8249;</button><div class="grp-nav-c"><div class="grp-nav-m">${y}년 ${m}월</div><div class="grp-nav-t">합계 ${fmtAmt(total)}</div></div><button class="month-btn" onclick="grpMove(1)">&#8250;</button></div>`
+      :grpMode==='year'
+      ?`<div class="grp-nav"><button class="month-btn" onclick="grpYearMove(-1)">&#8249;</button><div class="grp-nav-c"><div class="grp-nav-m">${grpYear}년</div><div class="grp-nav-t">합계 ${fmtAmt(total)}${yMonths?` · ${yMonths}개월 · 월평균 ${fmtAmt(total/yMonths)}`:''}</div></div><button class="month-btn" onclick="grpYearMove(1)">&#8250;</button></div>`
       :`<div class="grp-sum">전체 ${months}개월 · 합계 ${fmtAmt(total)}</div>`)+
-    (catList.length?body:`<div class="empty">${grpMode==='month'?`${m}월 지출 기록이 없어요`:'데이터가 없어요'}</div>`);
+    (catList.length?body:`<div class="empty">${grpMode==='month'?`${m}월 지출 기록이 없어요`:grpMode==='year'?`${grpYear}년 지출 기록이 없어요`:'데이터가 없어요'}</div>`);
 }
 window.setGrpMode=function(m){grpMode=m;renderGrp();};
+window.grpYearMove=function(d){grpYear+=d;renderGrp();};
 window.grpMove=function(d){
   let y=+grpKey.slice(0,4),m=+grpKey.slice(5)-1+d;
   while(m<0){m+=12;y--;}while(m>11){m-=12;y++;}
@@ -1555,59 +1559,4 @@ window.alCopy=function(which){
   (navigator.clipboard?navigator.clipboard.writeText(v):Promise.reject()).then(()=>toast('복사됐어요 ✓'),()=>{prompt('아래 내용을 복사하세요',v);});
 };
 window.alSaveMap=async function(){
-  document.querySelectorAll('.al-map-in').forEach(i=>{alCfg.map[i.dataset.card]=i.value.trim()||i.dataset.card;});
-  try{await saveAutologCfg();toast('카드 이름 저장됐어요 ✓');}catch(e){toast('저장 실패: '+e.message);}
-};
-window.alDelMap=async function(card){
-  delete alCfg.map[card];
-  try{await saveAutologCfg();}catch{}
-  renderAutolog();
-};
-window.alDelUnknown=async function(id){
-  try{await deleteDoc(doc(db,'users',uid,'inbox',id));}catch(e){toast('삭제 실패');}
-  alUnknown=alUnknown.filter(u=>u.id!==id);renderAutolog();
-};
-const alBody=()=>`{"fields":{"title":{"stringValue":"여기에_알림제목"},"text":{"stringValue":"여기에_알림내용"},"key":{"stringValue":"${alCfg.key}"}}}`;
-
-function renderAutolog(){
-  const btn=document.getElementById('autologToggle');
-  if(btn)btn.innerHTML='⚡ 결제알림 자동기록 설정'+(alUnknown.length?` <span class="al-badge">인식 못한 알림 ${alUnknown.length}</span>`:'');
-  const c=document.getElementById('autologCard');
-  if(!c||c.style.display==='none')return;
-  const maps=Object.entries(alCfg.map);
-  c.innerHTML=
-    `<div class="al-step"><div class="al-h">① 연결 키</div>`+
-    (alCfg.key
-      ?`<div class="al-row"><code class="al-code">${alCfg.key.slice(0,6)}••••••••••••</code><button class="al-btn ghost" onclick="alNewKey()">재발급</button></div>`
-      :`<div class="al-desc">MacroDroid가 이 앱에 기록할 때 쓰는 비밀 키예요.</div><button class="al-btn" onclick="alNewKey()">키 만들기</button>`)+
-    `</div>`+
-    (alCfg.key?
-    `<div class="al-step"><div class="al-h">② MacroDroid 'HTTP 요청'에 붙여넣기</div>`+
-      `<div class="al-label">URL · 방식 POST</div><div class="al-row"><code class="al-code wrap">${esc(alInboxUrl())}</code><button class="al-btn ghost" onclick="alCopy('url')">복사</button></div>`+
-      `<div class="al-label">본문 · application/json</div><div class="al-row"><code class="al-code wrap">${esc(alBody())}</code><button class="al-btn ghost" onclick="alCopy('body')">복사</button></div>`+
-      `<div class="al-desc">붙여넣은 뒤 <b>여기에_알림제목</b>, <b>여기에_알림내용</b> 글자를 지우고 그 자리에 MacroDroid의 <b>…</b> 버튼으로 '알림 제목', '알림 텍스트'를 넣으세요.</div>`+
-    `</div>`:'')+
-    `<div class="al-step"><div class="al-h">③ 카드 이름 바꾸기</div>`+
-      `<div class="al-desc">알림에 찍히는 카드사 이름을 세부내역에서 쓸 이름으로 바꿔요. 새 카드가 들어오면 자동으로 추가돼요.</div>`+
-      (maps.length?maps.map(([k,v])=>
-        `<div class="al-map"><span class="al-map-src">${esc(k)}</span><span class="al-arrow">→</span><input class="input al-map-in" data-card="${esc(k)}" value="${esc(v)}"><button class="fixed-del" onclick="alDelMap('${esc(k).replace(/'/g,'&#39;')}')">×</button></div>`).join('')
-        +`<button class="al-btn" onclick="alSaveMap()">카드 이름 저장</button>`
-        :`<div class="al-desc">아직 들어온 알림이 없어요.</div>`)+
-    `</div>`+
-    (alUnknown.length?
-    `<div class="al-step"><div class="al-h">⚠️ 인식 못한 알림 ${alUnknown.length}건</div>`+
-      alUnknown.map(u=>`<div class="al-unk"><div class="al-unk-t"><b>${esc(u.title)||'(제목 없음)'}</b><br>${esc(u.text)||'(내용 없음)'}<div class="al-unk-d">${u.at.toLocaleString('ko-KR')}</div></div><button class="fixed-del" onclick="alDelUnknown('${u.id}')">×</button></div>`).join('')+
-    `</div>`:'');
-}
-
-// ── 네비게이션 ──
-document.getElementById('prevBtn').onclick=()=>{curM--;if(curM<0){curM=11;curY--;}render();loadMonthFix();if(curPage===4)renderCards();};
-document.getElementById('nextBtn').onclick=()=>{curM++;if(curM>11){curM=0;curY++;}render();loadMonthFix();if(curPage===4)renderCards();};
-document.getElementById('addTxBtn').onclick=addTx;
-document.getElementById('inputAmount').addEventListener('keydown',e=>{if(e.key==='Enter')addTx();});
-
-if(gistToken)document.getElementById('gistBtn').textContent='☁️ 연동됨';
-render();
-</script>
-</body>
-</html>
+  document.querySelectorAll('.al-map-in').forEach(i=>{alCfg.map[i.dat
