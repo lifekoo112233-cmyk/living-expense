@@ -1465,6 +1465,18 @@ window.delCardTx=async function(id){
 };
 
 // 토스 알림: 제목 "50,000원 결제" / 내용 "KB국민카드 | 호광주유소(일시불)"
+// Google 월렛: 제목 "(JOO)DAISOASEONGSANEOB" / 내용 "Redot Card ••4596(으)로 8,000 원을(를) 결제했습니다."
+function parseWalletNoti(title,text){
+  title=String(title||'').trim();text=String(text||'').replace(/\s+/g,' ').trim();
+  const i=text.indexOf('(으)로');
+  if(i<0||!/결제|환불|취소/.test(text))return null;
+  const am=text.slice(i).match(/([\d,]+)\s*원/);if(!am)return null;
+  const amount=parseInt(am[1].replace(/,/g,''),10);if(!amount)return null;
+  const card=text.slice(0,i).replace(/[•·∙*]+/g,' ').replace(/\s+/g,' ').trim();   // "Redot Card 4596"
+  if(!card)return null;
+  return{amount,card,merchant:title||'(가맹점 없음)',plan:'',cancel:/환불|취소/.test(text)};
+}
+const WALLET_DEFAULT_NAMES=[[/^Redot Card/i,'레드카드']];
 function parseTossNoti(title,text){
   title=String(title||'').trim();text=String(text||'').trim();
   const all=title+' '+text;
@@ -1507,15 +1519,15 @@ async function processInbox(){
     const r=await fetch(alInboxUrl()+'?pageSize=300',{headers:{Authorization:'Bearer '+token}});
     if(!r.ok)throw new Error('inbox '+r.status);
     const docs=((await r.json()).documents||[]).sort((a,b)=>a.createTime.localeCompare(b.createTime));
-    const unknown=[];let added=0,canceled=0,mapChanged=false;
+    const unknown=[];let added=0,canceled=0,dupes=0,mapChanged=false;const fresh=[];
     for(const d of docs){
       const id=d.name.split('/').pop();
       const f=d.fields||{};
       const title=f.title?.stringValue||'',text=f.text?.stringValue||'';
       const at=new Date(d.createTime);               // 알림이 도착한 실제 시각
-      const p=parseTossNoti(title,text);
+      const p=parseTossNoti(title,text)||parseWalletNoti(title,text);
       if(!p){unknown.push({id,title,text,at});continue;}
-      if(!(p.card in alCfg.map)){alCfg.map[p.card]=p.card;mapChanged=true;}
+      if(!(p.card in alCfg.map)){const d=WALLET_DEFAULT_NAMES.find(([re])=>re.test(p.card));alCfg.map[p.card]=d?d[1]:p.card;mapChanged=true;}
       const name=(alCfg.map[p.card]||p.card).trim()||p.card;
       const date=`${at.getFullYear()}-${pad2(at.getMonth()+1)}-${pad2(at.getDate())}`;
       const ref=doc(db,'users',uid,'cardtx','auto_'+id);   // 같은 알림은 몇 번 처리해도 1건
@@ -1526,8 +1538,10 @@ async function processInbox(){
         else await setDoc(ref,{...rec,amount:-p.amount,cancel:true});
         canceled++;
       }else{
-        await setDoc(ref,rec);
-        added++;
+        // 같은 결제가 다른 앱 알림으로 이미 들어왔으면(같은 카드·금액, 5분 이내) 건너뛰기
+        const dup=[...cardTx,...fresh].some(t=>!t.cancel&&t.card===name&&t.amount===p.amount&&t.id!=='auto_'+id&&Math.abs((t.at||0)-rec.at)<5*60*1000);
+        if(dup)dupes++;
+        else{await setDoc(ref,rec);fresh.push({...rec,id:'auto_'+id});added++;}
       }
       await deleteDoc(doc(db,'users',uid,'inbox',id));
     }
