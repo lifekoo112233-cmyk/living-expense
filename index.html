@@ -1459,7 +1459,7 @@ window.saveGistToken=async function(){
   const token=document.getElementById('gistTokenInput').value.trim();const msg=document.getElementById('gistMsg');
   if(!token){msg.textContent='토큰을 입력해주세요.';return;}
   msg.style.color='var(--muted)';msg.textContent='확인 중...';
-  try{const r=await fetch('https://api.github.com/user',{headers:{Authorization:`token ${token}`}});if(!r.ok)throw new Error('토큰이 올바르지 않아요.');const user=await r.json();gistToken=token;localStorage.setItem('gist_token',token);msg.style.color='var(--accent)';msg.textContent=`✓ ${user.login} 연결됨!`;document.getElementById('gistTitle').textContent='☁️ GitHub Gist 연동됨';document.getElementById('gistBtn').textContent='☁️ 연동됨';await gistSave();setTimeout(hideGistCard,1500);}
+  try{const r=await fetch('https://api.github.com/user',{headers:{Authorization:`token ${token}`}});if(!r.ok)throw new Error('토큰이 올바르지 않아요.');const user=await r.json();gistToken=token;localStorage.setItem('gist_token',token);msg.style.color='var(--accent)';msg.textContent=`✓ ${user.login} 연결됨!`;document.getElementById('gistTitle').textContent='☁️ GitHub Gist 연동됨';document.getElementById('gistBtn').textContent='☁️ 연동됨';await gistSave();divLoad();setTimeout(hideGistCard,1500);}
   catch(e){msg.style.color='var(--danger)';msg.textContent=e.message;}
 };
 async function gistSave(){
@@ -1473,12 +1473,26 @@ async function gistLoad(){
 }
 // ===== 배당·분배금 (키움 → Gist dividends.json) =====
 let divItems=[],divUpdated='',divY=new Date().getFullYear(),divAcct='전체',divShowAll=false;
+async function divFetch(id){
+  const r=await fetch(`https://api.github.com/gists/${id}`,{headers:{Authorization:`token ${gistToken}`},cache:'no-store'});
+  if(!r.ok)return null;const d=await r.json();const f=d.files?.['dividends.json'];if(!f)return null;
+  let raw=f.content;if(f.truncated&&f.raw_url){raw=await (await fetch(f.raw_url,{cache:'no-store'})).text();}
+  return JSON.parse(raw);
+}
+async function divFindGist(){
+  // 내 Gist 목록에서 dividends.json 이 들어있는 Gist 찾기
+  const r=await fetch('https://api.github.com/gists?per_page=100',{headers:{Authorization:`token ${gistToken}`},cache:'no-store'});
+  if(!r.ok)return '';const list=await r.json();
+  const g=list.find(x=>x.files&&x.files['dividends.json']);return g?g.id:'';
+}
 async function divLoad(){
-  if(!gistToken||!gistId)return;
-  try{const r=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${gistToken}`},cache:'no-store'});if(!r.ok)return;const d=await r.json();
-    const f=d.files?.['dividends.json'];if(!f)return;
-    let raw=f.content;if(f.truncated&&f.raw_url){raw=await (await fetch(f.raw_url,{cache:'no-store'})).text();}
-    const data=JSON.parse(raw);divItems=Array.isArray(data.items)?data.items:[];divUpdated=data.updated||'';
+  if(!gistToken)return;
+  try{
+    let id=localStorage.getItem('div_gist_id')||gistId;
+    let data=id?await divFetch(id):null;
+    if(!data){const f=await divFindGist();if(f){id=f;localStorage.setItem('div_gist_id',f);data=await divFetch(f);}}
+    if(!data)return;
+    divItems=Array.isArray(data.items)?data.items:[];divUpdated=data.updated||'';
     const ys=divItems.map(x=>+x.date.slice(0,4));if(ys.length&&!ys.includes(divY))divY=Math.max(...ys);
     renderDiv();}catch(e){}
 }
