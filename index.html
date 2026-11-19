@@ -279,6 +279,25 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .alloc-pct{font-size:13px;font-weight:700;color:var(--text)}
 .alloc-bg{width:100%;height:6px;background:var(--border);border-radius:99px;overflow:hidden}
 .alloc-fill{height:100%;border-radius:99px;transition:width .5s ease}
+.div-chips{display:flex;gap:6px;flex-wrap:wrap;padding:12px 15px 0}
+.div-chip{font-size:12px;padding:5px 11px;border-radius:20px;border:1px solid var(--pborder2);background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font)}
+.div-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.div-sum{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px 15px}
+.div-sum-box{background:var(--bg);border-radius:12px;padding:10px}
+.div-sum-label{font-size:11px;color:var(--muted)}
+.div-sum-val{font-size:15px;font-weight:700;color:var(--text);margin-top:3px}
+.div-sec{font-size:11px;font-weight:700;color:var(--muted);padding:6px 15px 6px;letter-spacing:.04em}
+.div-mon{display:grid;grid-template-columns:34px 1fr 78px;align-items:center;gap:8px;padding:3px 15px;font-size:12px}
+.div-mon-m{color:var(--muted)}
+.div-mon-v{text-align:right;color:var(--text);font-weight:600}
+.div-row{display:flex;justify-content:space-between;align-items:center;padding:9px 15px;border-top:1px solid var(--border);font-size:13px}
+.div-row-l{min-width:0}
+.div-row-name{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:210px}
+.div-row-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.div-row-v{text-align:right;font-weight:700;color:var(--text);white-space:nowrap}
+.div-row-tax{font-size:11px;color:var(--muted);font-weight:400}
+.div-more{display:block;width:calc(100% - 30px);margin:8px 15px 12px;padding:8px;border-radius:10px;border:1px solid var(--pborder2);background:transparent;color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--font)}
+.div-foot{font-size:11px;color:var(--muted);padding:8px 15px 12px}
 .pstatus{font-size:12px;color:var(--muted);text-align:center;padding:8px;display:flex;align-items:center;justify-content:center;gap:5px}
 .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .dot-on{background:var(--accent)}.dot-spin{background:var(--orange);animation:pulse2 1s infinite}.dot-err{background:var(--danger)}
@@ -693,6 +712,19 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
       <div class="alloc-wrap" id="allocBars"></div>
     </div>
 
+    <!-- 배당·분배금 (키움 자동기록, Gist dividends.json) -->
+    <div class="pcard" id="divCard" style="display:none">
+      <div class="pcard-hd">
+        <span class="pcard-hd-title">배당·분배금</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="padd-btn" onclick="divYear(-1)">◀</button>
+          <span id="divYearText" style="font-size:13px;font-weight:700;color:var(--text)"></span>
+          <button class="padd-btn" onclick="divYear(1)">▶</button>
+        </div>
+      </div>
+      <div id="divBody"></div>
+    </div>
+
     <button class="ai-port-btn" onclick="aiPortfolio()">🤖 AI 포트폴리오 분석 ↗</button>
     <div class="pstatus" id="portStatus"><span class="dot dot-spin"></span>시세 불러오는 중...</div>
   </div>
@@ -834,6 +866,7 @@ onAuthStateChanged(auth,async user=>{
     document.getElementById('userName').textContent=(user.displayName||'').split(' ')[0];
     listenTx();loadTemplate();loadMonthFix();render();loadAutologCfg();listenInbox();listenCardTx();listenBankTx();
     if(gistToken&&gistId)await gistLoad();
+    divLoad();
     fetchFX();setTimeout(()=>refreshPrices(false),1000);
   } else {
     uid=null;
@@ -1437,6 +1470,49 @@ async function gistSave(){
 async function gistLoad(){
   if(!gistToken||!gistId)return;
   try{const r=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${gistToken}`}});if(!r.ok)return;const d=await r.json();const raw=d.files?.['portfolio.json']?.content;if(!raw)return;const data=JSON.parse(raw);const imp=data.stocks||data;if(Array.isArray(imp)&&imp.length){stocks=imp;saveStocks();renderPort();}}catch{}
+}
+// ===== 배당·분배금 (키움 → Gist dividends.json) =====
+let divItems=[],divUpdated='',divY=new Date().getFullYear(),divAcct='전체',divShowAll=false;
+async function divLoad(){
+  if(!gistToken||!gistId)return;
+  try{const r=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{Authorization:`token ${gistToken}`},cache:'no-store'});if(!r.ok)return;const d=await r.json();
+    const f=d.files?.['dividends.json'];if(!f)return;
+    let raw=f.content;if(f.truncated&&f.raw_url){raw=await (await fetch(f.raw_url,{cache:'no-store'})).text();}
+    const data=JSON.parse(raw);divItems=Array.isArray(data.items)?data.items:[];divUpdated=data.updated||'';
+    const ys=divItems.map(x=>+x.date.slice(0,4));if(ys.length&&!ys.includes(divY))divY=Math.max(...ys);
+    renderDiv();}catch(e){}
+}
+function divWon(n){return '₩'+Math.round(n||0).toLocaleString('ko-KR');}
+window.divYear=function(d){divY+=d;divShowAll=false;renderDiv();};
+window.divSetAcct=function(a){divAcct=a;divShowAll=false;renderDiv();};
+window.divMore=function(){divShowAll=!divShowAll;renderDiv();};
+function renderDiv(){
+  const card=document.getElementById('divCard');if(!card)return;
+  if(!divItems.length){card.style.display='none';return;}
+  card.style.display='';
+  document.getElementById('divYearText').textContent=divY+'년';
+  const accts=['전체',...[...new Set(divItems.map(x=>x.acct))]];
+  const list=divItems.filter(x=>x.date.startsWith(String(divY))&&(divAcct==='전체'||x.acct===divAcct)).sort((a,b)=>b.date.localeCompare(a.date));
+  const net=list.reduce((a,x)=>a+(x.net||0),0),gross=list.reduce((a,x)=>a+(x.gross||0),0),tax=list.reduce((a,x)=>a+(x.tax||0),0);
+  const mon=Array(12).fill(0);list.forEach(x=>{mon[+x.date.slice(5,7)-1]+=x.net||0;});
+  const maxM=Math.max(...mon,1);
+  const byName={};list.forEach(x=>{byName[x.name]=(byName[x.name]||0)+(x.net||0);});
+  const names=Object.entries(byName).sort((a,b)=>b[1]-a[1]);
+  let h=`<div class="div-chips">${accts.map(a=>`<button class="div-chip${a===divAcct?' on':''}" onclick="divSetAcct('${a}')">${a}</button>`).join('')}</div>`;
+  h+=`<div class="div-sum"><div class="div-sum-box"><div class="div-sum-label">실수령(세후)</div><div class="div-sum-val">${divWon(net)}</div></div><div class="div-sum-box"><div class="div-sum-label">세전</div><div class="div-sum-val">${divWon(gross)}</div></div><div class="div-sum-box"><div class="div-sum-label">세금</div><div class="div-sum-val">${divWon(tax)}</div></div></div>`;
+  if(!list.length){h+=`<div class="div-foot">${divY}년 기록이 없어요.</div>`;}
+  else{
+    h+=`<div class="div-sec">월별 (세후) · 월평균 ${divWon(net/Math.max(1,mon.filter(v=>v>0).length))}</div>`;
+    h+=mon.map((v,i)=>`<div class="div-mon"><span class="div-mon-m">${i+1}월</span><div class="alloc-bg"><div class="alloc-fill" style="width:${(v/maxM*100).toFixed(1)}%;background:var(--accent)"></div></div><span class="div-mon-v">${v?divWon(v):'-'}</span></div>`).join('');
+    h+=`<div class="div-sec" style="margin-top:10px">종목별 (세후)</div>`;
+    h+=`<div class="alloc-wrap" style="padding-top:2px">${names.map(([n,v],i)=>`<div class="alloc-row"><div class="alloc-hd"><span class="alloc-name">${n}</span><span class="alloc-pct">${divWon(v)}</span></div><div class="alloc-bg"><div class="alloc-fill" style="width:${(v/names[0][1]*100).toFixed(1)}%;background:${COLORS[i%COLORS.length]}"></div></div></div>`).join('')}</div>`;
+    h+=`<div class="div-sec">입금 내역 ${list.length}건</div>`;
+    const shown=divShowAll?list:list.slice(0,8);
+    h+=shown.map(x=>`<div class="div-row"><div class="div-row-l"><div class="div-row-name">${x.name}</div><div class="div-row-sub">${x.date.slice(5).replace('-','.')} · ${x.acct} · ${x.type}</div></div><div class="div-row-v">${divWon(x.net)}${x.tax?`<div class="div-row-tax">세금 ${divWon(x.tax)}</div>`:''}</div></div>`).join('');
+    if(list.length>8)h+=`<button class="div-more" onclick="divMore()">${divShowAll?'접기':'전체 보기'}</button>`;
+  }
+  if(divUpdated)h+=`<div class="div-foot">키움 자동기록 · 마지막 업데이트 ${divUpdated.replace('T',' ').slice(0,16)}</div>`;
+  document.getElementById('divBody').innerHTML=h;
 }
 
 // ── 결제알림 자동기록 (토스 알림 → MacroDroid → Firestore 수신함 → 세부내역) ──
