@@ -366,6 +366,17 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .grp-nav-m{font-size:15px;font-weight:900}
 .grp-nav-t{font-size:12px;color:var(--muted);font-weight:600;margin-top:1px}
 .grp-sum{font-size:12px;color:var(--muted);font-weight:600;margin-top:-4px}
+.bk-sum{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.bk-in{color:var(--blue)}
+.bk-out{color:var(--danger)}
+.bk-row{align-items:flex-start}
+.bk-type{font-size:10px;font-weight:800;border-radius:6px;padding:1px 5px}
+.bk-type.out{color:var(--danger);background:var(--danger-light)}
+.bk-type.in{color:var(--blue);background:var(--blue-light)}
+.bk-none{font-size:12px;color:var(--muted)}
+.bk-raw{font-size:11px;color:var(--muted);font-weight:400;white-space:normal;line-height:1.4;margin-top:2px;word-break:break-all}
+.paid-badge{font-size:10px;font-weight:800;color:var(--accent);background:var(--accent-light);border-radius:6px;padding:2px 5px;white-space:nowrap;flex-shrink:0}
+.al-rule-kw,.al-rule-nm{flex:1;min-width:0;padding:7px 10px;font-size:14px}
 .pgreen{color:var(--accent)}.pred{color:var(--danger)}
 </style>
 </head>
@@ -581,6 +592,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
     <div class="info-box blue">💳 토스 결제 알림으로 자동 기록된 카드 결제예요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.</div>
     <div id="cardSummary"></div>
     <div id="cardList" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div id="bankList"></div>
     <button class="autolog-toggle" id="autologToggle" onclick="toggleAutolog()">⚡ 결제알림 자동기록 설정</button>
     <div class="fcard autolog-card" id="autologCard" style="display:none"></div>
   </div>
@@ -820,14 +832,14 @@ onAuthStateChanged(auth,async user=>{
     document.getElementById('mainApp').style.display='flex';
     document.getElementById('userAvatar').src=user.photoURL||'';
     document.getElementById('userName').textContent=(user.displayName||'').split(' ')[0];
-    listenTx();loadTemplate();loadMonthFix();render();loadAutologCfg();listenInbox();listenCardTx();
+    listenTx();loadTemplate();loadMonthFix();render();loadAutologCfg();listenInbox();listenCardTx();listenBankTx();
     if(gistToken&&gistId)await gistLoad();
     fetchFX();setTimeout(()=>refreshPrices(false),1000);
   } else {
     uid=null;
     document.getElementById('loginScreen').style.display='flex';
     document.getElementById('mainApp').style.display='none';
-    if(txUnsub){txUnsub();txUnsub=null;}allTx=[];if(alUnsub){alUnsub();alUnsub=null;}if(cardUnsub){cardUnsub();cardUnsub=null;}cardTx=[];
+    if(txUnsub){txUnsub();txUnsub=null;}allTx=[];if(alUnsub){alUnsub();alUnsub=null;}if(cardUnsub){cardUnsub();cardUnsub=null;}cardTx=[];if(bankUnsub){bankUnsub();bankUnsub=null;}bankTx=[];
   }
 });
 
@@ -979,7 +991,9 @@ function buildFRows(cid,srcArr,displayArr,hasNote){
     ai.addEventListener('input',function(){if(origIdx>=0){srcArr[origIdx].amount=parseFloat(this.value)||0;if(srcArr===tplInc||srcArr===tplFix)updateTplTotals();else updateMfTotals();}});
     const delBtn=document.createElement('button');delBtn.className='fixed-del';delBtn.textContent='×';
     delBtn.addEventListener('click',()=>{if(origIdx>=0)srcArr.splice(origIdx,1);if(srcArr===tplInc||srcArr===tplFix)renderTemplate();else renderMonthFix();});
-    row.appendChild(ni);row.appendChild(ai);
+    row.appendChild(ni);
+    if(srcArr===mfFix||srcArr===mfInc){const pm=paidMap(curMk(),srcArr===mfInc?'입금':'출금')[(item.name||'').trim()];if(pm){const b=document.createElement('span');b.className='paid-badge';b.textContent='✓ '+pm.dates.join(',');b.title=(srcArr===mfInc?'입금 ':'출금 ')+fmt(pm.amt);row.appendChild(b);}}
+    row.appendChild(ai);
     if(hasNote){const note=document.createElement('input');note.className='fld fld-note';note.placeholder='비고';note.value=item.note||'';note.addEventListener('input',function(){if(origIdx>=0)srcArr[origIdx].note=this.value;});row.appendChild(note);}
     row.appendChild(delBtn);container.appendChild(row);
   });
@@ -1428,6 +1442,63 @@ async function gistLoad(){
 // ── 결제알림 자동기록 (토스 알림 → MacroDroid → Firestore 수신함 → 세부내역) ──
 let alCfg={key:'',map:{'KB국민카드':'국민카드'}},alUnknown=[],alBusy=false,alAgain=false,alUnsub=null;
 let cardTx=[],cardUnsub=null;
+let bankTx=[],bankUnsub=null;
+
+// 은행 입출금 알림: "입금"/"출금"이 들어 있으면 원문 통째로 저장, 금액은 최대한 찾아냄
+function parseBankNoti(title,text){
+  const raw=(String(title||'')+' '+String(text||'')).replace(/\s+/g,' ').trim();
+  const t=raw.replace(/입출금/g,' ');                      // "입출금 알림" 같은 제목은 판단에서 제외
+  const iIn=t.search(/입금/),iOut=t.search(/출금/);
+  if(iIn<0&&iOut<0)return null;
+  if(/예정|예약/.test(t))return null;                       // 출금 예정 안내는 실제 출금이 아님
+  const type=iOut>=0&&(iIn<0||iOut<iIn)?'출금':'입금';
+  const kIdx=type==='출금'?iOut:iIn;
+  // 잔액·날짜·시간·계좌번호(*포함)는 금액 후보에서 뺌
+  const cleaned=t.replace(/잔액\s*:?\s*[\d,]+\s*원?/g,' ').replace(/\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}/g,' ').replace(/\(\s*\d{1,4}\s*\)/g,' ').replace(/\d{1,2}[\/.-]\d{1,2}/g,' ').replace(/\d{1,2}:\d{2}(:\d{2})?/g,' ').replace(/[\d-]*\*+[\d*-]*/g,' ');
+  const cands=[...cleaned.matchAll(/\d{1,3}(?:,\d{3})+|\d{4,}/g)].map(m=>({v:parseInt(m[0].replace(/,/g,''),10),i:m.index,won:/^\s*원/.test(cleaned.slice(m.index+m[0].length))}));
+  if(!cands.length)return{type,amount:0,raw};
+  const k=cleaned.search(type==='출금'?/출금/:/입금/);
+  cands.sort((a,b)=>(b.won-a.won)||(Math.abs(a.i-k)-Math.abs(b.i-k)));   // '원'이 붙은 숫자 → 키워드에 가까운 숫자 순
+  return{type,amount:cands[0].v||0,raw};
+}
+function bankLabel(t){
+  const r=(alCfg.bankRules||[]).find(x=>x.kw&&t.raw.toLowerCase().includes(x.kw.toLowerCase()));
+  return r?r.name:'';
+}
+function listenBankTx(){
+  if(bankUnsub)bankUnsub();
+  bankUnsub=onSnapshot(collection(db,'users',uid,'banklog'),snap=>{
+    bankTx=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(curPage===4)renderCards();
+    if(curPage===2)renderMonthFix();
+  },e=>console.warn('banklog',e));
+}
+// 이달고정 항목 이름 → 이번 달 출금 기록 (분류 규칙의 이름과 같은 항목)
+function paidMap(k,type='출금'){
+  const m={};
+  bankTx.filter(t=>t.type===type&&t.date&&t.date.slice(0,7)===k).forEach(t=>{
+    const l=bankLabel(t);if(!l)return;
+    const o=m[l]||(m[l]={amt:0,dates:[]});o.amt+=t.amount||0;o.dates.push(t.date.slice(5).replace('-','/'));
+  });
+  return m;
+}
+function renderBankSection(){
+  const el=document.getElementById('bankList');if(!el)return;
+  const k=curMk();
+  const list=bankTx.filter(t=>t.date&&t.date.slice(0,7)===k).sort((a,b)=>(b.at||0)-(a.at||0));
+  const out=list.filter(t=>t.type==='출금').reduce((s,t)=>s+(t.amount||0),0);
+  const inn=list.filter(t=>t.type==='입금').reduce((s,t)=>s+(t.amount||0),0);
+  el.innerHTML=`<div class="fcard"><div class="fcard-head cd-head"><span class="cd-name">🏦 계좌 입출금</span><span class="bk-sum"><span class="bk-in">입금 ${fmt(inn)}</span> · <span class="bk-out">출금 ${fmt(out)}</span></span></div>`+
+    (list.length?list.map(t=>{const d=new Date(t.at||t.date);const l=bankLabel(t);
+      return `<div class="cd-row bk-row"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
+        `<div class="cd-mer"><div><span class="bk-type ${t.type==='입금'?'in':'out'}">${t.type}</span> ${l?`<b>${esc(l)}</b>`:'<span class="bk-none">미분류</span>'}</div><div class="bk-raw">${esc(t.raw)}</div></div>`+
+        `<div class="cd-amt ${t.type==='입금'?'bk-in':''}">${t.amount?fmt(t.amount):'?'}</div><button class="tx-del" onclick="delBankTx('${t.id}')">×</button></div>`;}).join('')
+      :`<div class="empty" style="padding:18px 0">${curM+1}월 입출금 기록이 없어요</div>`)+`</div>`;
+}
+window.delBankTx=async function(id){
+  if(!confirm('이 입출금 기록을 지울까요?'))return;
+  try{await deleteDoc(doc(db,'users',uid,'banklog',id));toast('삭제됐어요');}catch(e){toast('삭제 실패');}
+};
 const FS_BASE='https://firestore.googleapis.com/v1/projects/living-expense/databases/(default)/documents';
 const alInboxUrl=()=>`${FS_BASE}/users/${uid}/inbox`;
 const pad2=n=>String(n).padStart(2,'0');
@@ -1439,6 +1510,7 @@ function listenCardTx(){
   },e=>console.warn('cardtx',e));
 }
 function renderCards(){
+  renderBankSection();
   const k=curMk();
   const list=cardTx.filter(t=>t.date&&t.date.slice(0,7)===k);
   const total=list.reduce((s,t)=>s+t.amount,0);
@@ -1497,11 +1569,11 @@ function parseTossNoti(title,text){
 async function loadAutologCfg(){
   try{
     const s=await getDoc(doc(db,'users',uid,'settings','autolog'));
-    if(s.exists())alCfg={key:s.data().key||'',map:s.data().map||{}};
+    if(s.exists())alCfg={key:s.data().key||'',map:s.data().map||{},bankRules:s.data().bankRules||[]};
   }catch(e){console.error(e);}
   renderAutolog();
 }
-async function saveAutologCfg(){await setDoc(doc(db,'users',uid,'settings','autolog'),{key:alCfg.key,map:alCfg.map});}
+async function saveAutologCfg(){await setDoc(doc(db,'users',uid,'settings','autolog'),{key:alCfg.key,map:alCfg.map,bankRules:alCfg.bankRules||[]});}
 
 function listenInbox(){
   if(alUnsub)alUnsub();
@@ -1519,14 +1591,21 @@ async function processInbox(){
     const r=await fetch(alInboxUrl()+'?pageSize=300',{headers:{Authorization:'Bearer '+token}});
     if(!r.ok)throw new Error('inbox '+r.status);
     const docs=((await r.json()).documents||[]).sort((a,b)=>a.createTime.localeCompare(b.createTime));
-    const unknown=[];let added=0,canceled=0,dupes=0,mapChanged=false;const fresh=[];
+    const unknown=[];let added=0,canceled=0,dupes=0,banked=0,mapChanged=false;const fresh=[];
     for(const d of docs){
       const id=d.name.split('/').pop();
       const f=d.fields||{};
       const title=f.title?.stringValue||'',text=f.text?.stringValue||'';
       const at=new Date(d.createTime);               // 알림이 도착한 실제 시각
       const p=parseTossNoti(title,text)||parseWalletNoti(title,text);
-      if(!p){unknown.push({id,title,text,at});continue;}
+      if(!p){
+        const b=parseBankNoti(title,text);
+        if(b){
+          await setDoc(doc(db,'users',uid,'banklog','auto_'+id),{...b,date:`${at.getFullYear()}-${pad2(at.getMonth()+1)}-${pad2(at.getDate())}`,at:at.getTime()});
+          await deleteDoc(doc(db,'users',uid,'inbox',id));banked++;continue;
+        }
+        unknown.push({id,title,text,at});continue;
+      }
       if(!(p.card in alCfg.map)){const d=WALLET_DEFAULT_NAMES.find(([re])=>re.test(p.card));alCfg.map[p.card]=d?d[1]:p.card;mapChanged=true;}
       const name=(alCfg.map[p.card]||p.card).trim()||p.card;
       const date=`${at.getFullYear()}-${pad2(at.getMonth()+1)}-${pad2(at.getDate())}`;
@@ -1547,7 +1626,7 @@ async function processInbox(){
     }
     alUnknown=unknown;
     if(mapChanged)await saveAutologCfg();
-    if(added||canceled)toast(`⚡ 결제 ${added}건${canceled?` · 취소 ${canceled}건`:''} 자동 기록됐어요`);
+    if(added||canceled||banked)toast(`⚡ ${added?`결제 ${added}건 `:''}${canceled?`취소 ${canceled}건 `:''}${banked?`입출금 ${banked}건 `:''}자동 기록됐어요`);
   }catch(e){console.error(e);}
   finally{
     alBusy=false;renderAutolog();
@@ -1581,6 +1660,18 @@ window.alDelMap=async function(card){
   try{await saveAutologCfg();}catch{}
   renderAutolog();
 };
+function alReadRules(){
+  const rs=alCfg.bankRules||(alCfg.bankRules=[]);
+  document.querySelectorAll('.al-rule-kw').forEach(i=>{rs[+i.dataset.i].kw=i.value.trim();});
+  document.querySelectorAll('.al-rule-nm').forEach(i=>{rs[+i.dataset.i].name=i.value.trim();});
+}
+window.alAddRule=function(){alReadRules();alCfg.bankRules.push({kw:'',name:''});renderAutolog();};
+window.alDelRule=function(i){alReadRules();alCfg.bankRules.splice(i,1);renderAutolog();};
+window.alSaveRules=async function(){
+  alReadRules();alCfg.bankRules=alCfg.bankRules.filter(r=>r.kw&&r.name);
+  try{await saveAutologCfg();toast('분류 규칙 저장됐어요 ✓');}catch(e){toast('저장 실패: '+e.message);}
+  renderAutolog();renderCards();
+};
 window.alDelUnknown=async function(id){
   try{await deleteDoc(doc(db,'users',uid,'inbox',id));}catch(e){toast('삭제 실패');}
   alUnknown=alUnknown.filter(u=>u.id!==id);renderAutolog();
@@ -1611,6 +1702,12 @@ function renderAutolog(){
         `<div class="al-map"><span class="al-map-src">${esc(k)}</span><span class="al-arrow">→</span><input class="input al-map-in" data-card="${esc(k)}" value="${esc(v)}"><button class="fixed-del" onclick="alDelMap('${esc(k).replace(/'/g,'&#39;')}')">×</button></div>`).join('')
         +`<button class="al-btn" onclick="alSaveMap()">카드 이름 저장</button>`
         :`<div class="al-desc">아직 들어온 알림이 없어요.</div>`)+
+    `</div>`+
+    `<div class="al-step"><div class="al-h">④ 입출금 분류 규칙</div>`+
+      `<div class="al-desc">입출금 알림 원문에 <b>키워드</b>가 들어 있으면 그 <b>이름</b>으로 분류해요. 이름을 이달고정 항목 이름과 똑같이 적으면 이달고정에 ✓ 납부 표시가 붙어요. 규칙을 바꾸면 지난 기록도 다시 분류돼요.</div>`+
+      (alCfg.bankRules||[]).map((r,i)=>
+        `<div class="al-map"><input class="input al-rule-kw" data-i="${i}" value="${esc(r.kw)}" placeholder="키워드 (예: 아파트)"><span class="al-arrow">→</span><input class="input al-rule-nm" data-i="${i}" value="${esc(r.name)}" placeholder="이름 (예: 관리비)"><button class="fixed-del" onclick="alDelRule(${i})">×</button></div>`).join('')+
+      `<div class="al-row"><button class="al-btn ghost" onclick="alAddRule()">+ 규칙 추가</button><button class="al-btn" onclick="alSaveRules()">규칙 저장</button></div>`+
     `</div>`+
     (alUnknown.length?
     `<div class="al-step"><div class="al-h">⚠️ 인식 못한 알림 ${alUnknown.length}건</div>`+
