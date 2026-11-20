@@ -705,6 +705,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
       </div>
 
       <div id="stockList"></div>
+      <div id="kwHoldNote" style="font-size:11px;color:var(--muted);padding:6px 15px 12px"></div>
     </div>
 
     <div class="pcard" id="allocCard" style="display:none">
@@ -866,7 +867,7 @@ onAuthStateChanged(auth,async user=>{
     document.getElementById('userName').textContent=(user.displayName||'').split(' ')[0];
     listenTx();loadTemplate();loadMonthFix();render();loadAutologCfg();listenInbox();listenCardTx();listenBankTx();
     if(gistToken&&gistId)await gistLoad();
-    divLoad();
+    await divLoad();
     fetchFX();setTimeout(()=>refreshPrices(false),1000);
   } else {
     uid=null;
@@ -1329,7 +1330,7 @@ function renderPort(){
     const cur=s.cur||s.avg;const ev=s.qty*cur;const spnl=(cur-s.avg)*s.qty;const spct=(cur-s.avg)/s.avg*100;const up=spnl>=0;const noP=!s.cur;
     return `<div class="stock-item">
       <div class="stock-top">
-        <div><div class="s-name">${s.name}</div><div class="s-code">${s.ticker||'직접입력'} · ${s.qty}주${s.usd?' · USD':''}</div></div>
+        <div><div class="s-name">${s.name}</div><div class="s-code">${s.acct?s.acct+' · ':''}${s.ticker||'직접입력'} · ${s.qty}주${s.usd?' · USD':''}</div></div>
         <div style="text-align:right"><div class="s-eval">₩${fmtK(ev)}</div><span class="s-badge ${noP?'bn':(up?'bg':'br')}">${noP?'가격없음':fmtP(spct)}</span></div>
         <div style="display:flex;flex-direction:column;gap:3px;margin-left:8px;align-items:center">
           <button class="del-btn" style="font-size:13px;color:var(--muted)" onclick="moveStock(${i},-1)" ${i===0?'disabled':''}>▲</button>
@@ -1459,7 +1460,7 @@ window.saveGistToken=async function(){
   const token=document.getElementById('gistTokenInput').value.trim();const msg=document.getElementById('gistMsg');
   if(!token){msg.textContent='토큰을 입력해주세요.';return;}
   msg.style.color='var(--muted)';msg.textContent='확인 중...';
-  try{const r=await fetch('https://api.github.com/user',{headers:{Authorization:`token ${token}`}});if(!r.ok)throw new Error('토큰이 올바르지 않아요.');const user=await r.json();gistToken=token;localStorage.setItem('gist_token',token);msg.style.color='var(--accent)';msg.textContent=`✓ ${user.login} 연결됨!`;document.getElementById('gistTitle').textContent='☁️ GitHub Gist 연동됨';document.getElementById('gistBtn').textContent='☁️ 연동됨';await gistSave();divLoad();setTimeout(hideGistCard,1500);}
+  try{const r=await fetch('https://api.github.com/user',{headers:{Authorization:`token ${token}`}});if(!r.ok)throw new Error('토큰이 올바르지 않아요.');const user=await r.json();gistToken=token;localStorage.setItem('gist_token',token);msg.style.color='var(--accent)';msg.textContent=`✓ ${user.login} 연결됨!`;document.getElementById('gistTitle').textContent='☁️ GitHub Gist 연동됨';document.getElementById('gistBtn').textContent='☁️ 연동됨';await gistSave();await divLoad();refreshPrices(false);setTimeout(hideGistCard,1500);}
   catch(e){msg.style.color='var(--danger)';msg.textContent=e.message;}
 };
 async function gistSave(){
@@ -1473,17 +1474,22 @@ async function gistLoad(){
 }
 // ===== 배당·분배금 (키움 → Gist dividends.json) =====
 let divItems=[],divUpdated='',divY=new Date().getFullYear(),divAcct='전체',divShowAll=false;
+async function kwRead(f){
+  if(!f)return null;let raw=f.content;
+  if(f.truncated&&f.raw_url){raw=await (await fetch(f.raw_url,{cache:'no-store'})).text();}
+  try{return JSON.parse(raw);}catch{return null;}
+}
 async function divFetch(id){
   const r=await fetch(`https://api.github.com/gists/${id}`,{headers:{Authorization:`token ${gistToken}`},cache:'no-store'});
-  if(!r.ok)return null;const d=await r.json();const f=d.files?.['dividends.json'];if(!f)return null;
-  let raw=f.content;if(f.truncated&&f.raw_url){raw=await (await fetch(f.raw_url,{cache:'no-store'})).text();}
-  return JSON.parse(raw);
+  if(!r.ok)return null;const d=await r.json();const fs=d.files||{};
+  if(!fs['dividends.json']&&!fs['holdings.json'])return null;
+  return {div:await kwRead(fs['dividends.json']),hold:await kwRead(fs['holdings.json'])};
 }
 async function divFindGist(){
-  // 내 Gist 목록에서 dividends.json 이 들어있는 Gist 찾기
+  // 내 Gist 목록에서 키움 자동기록(dividends.json / holdings.json)이 든 Gist 찾기
   const r=await fetch('https://api.github.com/gists?per_page=100',{headers:{Authorization:`token ${gistToken}`},cache:'no-store'});
   if(!r.ok)return '';const list=await r.json();
-  const g=list.find(x=>x.files&&x.files['dividends.json']);return g?g.id:'';
+  const g=list.find(x=>x.files&&(x.files['dividends.json']||x.files['holdings.json']));return g?g.id:'';
 }
 async function divLoad(){
   if(!gistToken)return;
@@ -1492,9 +1498,35 @@ async function divLoad(){
     let data=id?await divFetch(id):null;
     if(!data){const f=await divFindGist();if(f){id=f;localStorage.setItem('div_gist_id',f);data=await divFetch(f);}}
     if(!data)return;
-    divItems=Array.isArray(data.items)?data.items:[];divUpdated=data.updated||'';
-    const ys=divItems.map(x=>+x.date.slice(0,4));if(ys.length&&!ys.includes(divY))divY=Math.max(...ys);
-    renderDiv();}catch(e){}
+    if(data.div){
+      divItems=Array.isArray(data.div.items)?data.div.items:[];divUpdated=data.div.updated||'';
+      const ys=divItems.map(x=>+x.date.slice(0,4));if(ys.length&&!ys.includes(divY))divY=Math.max(...ys);
+      renderDiv();
+    }
+    if(data.hold)applyHoldings(data.hold);
+  }catch(e){}
+}
+// ===== 키움 보유종목 자동연동 (holdings.json → 보유 종목 목록 교체) =====
+function applyHoldings(h){
+  const items=Array.isArray(h.items)?h.items:[];
+  if(!items.length)return;
+  const key=x=>(x.acct||'')+'|'+(x.ticker||x.name);
+  const order=new Map(stocks.map((x,i)=>[key(x),i]));
+  const prev=new Map(stocks.map(x=>[key(x),x]));
+  const kwTickers=new Set(items.map(x=>x.ticker));
+  // 키움 종목: 자동 / 키움에 없는 종목(예: 해외 전용계좌): 손으로 관리하는 종목 그대로 유지
+  const manual=stocks.filter(x=>!x.kw&&!kwTickers.has(x.ticker));
+  const kws=items.map(x=>({name:x.name,ticker:x.ticker,qty:x.qty,avg:x.avg,cur:(prev.get(key(x))||{}).cur||x.cur,usd:!!x.usd,acct:x.acct,kw:true}));
+  const ns=[...kws,...manual];
+  const pos=x=>order.has(key(x))?order.get(key(x)):1e9;
+  ns.sort((a,b)=>pos(a)-pos(b));
+  const strip=arr=>JSON.stringify(arr.map(x=>[x.acct,x.ticker,x.name,x.qty,x.avg]));
+  const changed=strip(stocks)!==strip(ns);
+  stocks=ns;
+  if(changed)saveStocks();
+  renderPort();
+  const st=document.getElementById('kwHoldNote');
+  if(st)st.textContent=`계좌명이 붙은 종목은 키움 자동연동(잔고 기준 ${(h.updated||'').replace('T',' ').slice(0,16)}) · 나머지는 직접 관리`;
 }
 function divWon(n){return '₩'+Math.round(n||0).toLocaleString('ko-KR');}
 window.divYear=function(d){divY+=d;divShowAll=false;renderDiv();};
