@@ -1554,7 +1554,7 @@ function renderDiv(){
     h+=`<div class="alloc-wrap" style="padding-top:2px">${names.map(([n,v],i)=>`<div class="alloc-row"><div class="alloc-hd"><span class="alloc-name">${n}</span><span class="alloc-pct">${divWon(v)}</span></div><div class="alloc-bg"><div class="alloc-fill" style="width:${(v/names[0][1]*100).toFixed(1)}%;background:${COLORS[i%COLORS.length]}"></div></div></div>`).join('')}</div>`;
     h+=`<div class="div-sec">입금 내역 ${list.length}건</div>`;
     const shown=divShowAll?list:list.slice(0,8);
-    h+=shown.map(x=>`<div class="div-row"><div class="div-row-l"><div class="div-row-name">${x.name}</div><div class="div-row-sub">${x.date.slice(5).replace('-','.')} · ${x.acct} · ${x.type}</div></div><div class="div-row-v">${divWon(x.net)}${x.tax?`<div class="div-row-tax">세금 ${divWon(x.tax)}</div>`:''}</div></div>`).join('');
+    h+=shown.map(x=>`<div class="div-row"><div class="div-row-l"><div class="div-row-name">${x.name}</div><div class="div-row-sub">${x.date.slice(5).replace('-','.')} · ${x.acct} · ${x.type}${x.fc_net?` · $${(+x.fc_net).toFixed(2)} (₩${Math.round(x.fx).toLocaleString('ko-KR')})`:''}</div></div><div class="div-row-v">${divWon(x.net)}${x.tax?`<div class="div-row-tax">세금 ${divWon(x.tax)}</div>`:''}</div></div>`).join('');
     if(list.length>8)h+=`<button class="div-more" onclick="divMore()">${divShowAll?'접기':'전체 보기'}</button>`;
   }
   if(divUpdated)h+=`<div class="div-foot">키움 자동기록 · 마지막 업데이트 ${divUpdated.replace('T',' ').slice(0,16)}</div>`;
