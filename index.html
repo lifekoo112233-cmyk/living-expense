@@ -395,6 +395,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cs-bar{grid-column:1/3;height:6px;background:var(--border);border-radius:99px;overflow:hidden}
 .cs-bar>div{height:100%;background:var(--accent);border-radius:99px}
 .cd-memo{font-size:12px;font-weight:500;color:var(--accent);white-space:normal;word-break:break-all;margin-top:3px;line-height:1.35}
+.cd-memo.add{font-size:11px;color:var(--muted);font-weight:400}
 .cd-plan{font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:6px;padding:1px 5px}
 .cd-plan.red{color:var(--danger);background:var(--danger-light)}
 .cd-amt{font-size:14px;font-weight:900;flex-shrink:0}
@@ -1646,7 +1647,7 @@ function renderBankSection(){
   el.innerHTML=`<div class="fcard"><div class="fcard-head cd-head"><span class="cd-name">🏦 계좌 입출금</span><span class="bk-sum"><span class="bk-in">입금 ${fmt(inn)}</span> · <span class="bk-out">출금 ${fmt(out)}</span></span></div>`+
     (list.length?list.map(t=>{const d=new Date(t.at||t.date);const l=bankLabel(t);
       return `<div class="cd-row bk-row"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
-        `<div class="cd-mer memo-tap" onclick="editMemo('banklog','${t.id}')"><div><span class="bk-type ${t.type==='입금'?'in':'out'}">${t.type}</span> ${l?`<b>${esc(l)}</b>`:'<span class="bk-none">미분류</span>'}</div>${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:''}<div class="bk-raw">${esc(t.raw)}</div></div>`+
+        `<div class="cd-mer memo-tap" onclick="editMemo('banklog','${t.id}')"><div><span class="bk-type ${t.type==='입금'?'in':'out'}">${t.type}</span> ${l?`<b>${esc(l)}</b>`:'<span class="bk-none">미분류</span>'}</div>${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}<div class="bk-raw">${esc(t.raw)}</div></div>`+
         `${catBtn('banklog',t)}<div class="cd-amt ${t.type==='입금'?'bk-in':''}">${t.amount?fmt(t.amount):'?'}</div><button class="tx-del" onclick="delBankTx('${t.id}')">×</button></div>`;}).join('')
       :`<div class="empty" style="padding:18px 0">${curM+1}월 입출금 기록이 없어요</div>`)+`</div>`;
 }
@@ -1760,7 +1761,7 @@ function renderCards(){
     return `<details class="fcard cd-card" open><summary class="fcard-head cd-head"><span class="cd-name">💳 ${esc(c)}</span><span class="cd-cnt">${a.length}건</span><span class="fcard-total">${fmt(sum)}</span></summary>`+
       a.map(t=>{const d=new Date(t.at||t.date);
         return `<div class="cd-row${t.cancel?' cancel':''}"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
-        `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:''}</div>`+
+        `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}</div>`+
         `${catBtn('cardtx',t)}<div class="cd-amt">${fmt(t.amount)}</div><button class="tx-del" onclick="delCardTx('${t.id}')">×</button></div>`;}).join('')+
       `</details>`;
   }).join('');
