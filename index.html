@@ -60,7 +60,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 /* 탭 - 5개 */
 .tabs{display:flex;background:var(--surface);border-bottom:2px solid var(--border);overflow-x:auto}
 .tabs::-webkit-scrollbar{display:none}
-.tab{flex:1;min-width:0;padding:11px 4px;font-size:12px;font-weight:700;font-family:var(--font);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;color:var(--muted);white-space:nowrap}
+.tab{flex:1;min-width:0;padding:11px 2px;font-size:12px;font-weight:700;font-family:var(--font);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;color:var(--muted);white-space:nowrap}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
 /* 페이지 */
@@ -371,6 +371,8 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cd-date{font-size:12px;font-weight:700;width:38px;flex-shrink:0;line-height:1.3}
 .cd-date span{font-size:10px;color:var(--muted);font-weight:500}
 .cd-mer{flex:1;min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.memo-tap{cursor:pointer}
+.cd-memo{font-size:12px;font-weight:500;color:var(--accent);white-space:normal;word-break:break-all;margin-top:3px;line-height:1.35}
 .cd-plan{font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:6px;padding:1px 5px}
 .cd-plan.red{color:var(--danger);background:var(--danger-light)}
 .cd-amt{font-size:14px;font-weight:900;flex-shrink:0}
@@ -438,7 +440,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
     <button class="tab" id="tab-0" onclick="goPage(0)">세부내역</button>
     <button class="tab" id="tab-1" onclick="goPage(1)">고정항목</button>
     <button class="tab" id="tab-2" onclick="goPage(2)">이달고정</button>
-    <button class="tab" id="tab-4" onclick="goPage(4)">카드</button>
+    <button class="tab" id="tab-4" onclick="goPage(4)" style="flex:1.25">카드/입출금</button>
     <button class="tab" id="tab-5" onclick="goPage(5)">포트폴리오</button>
   </div>
 
@@ -608,7 +610,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 
   <!-- 탭4: 카드 결제내역 (토스 알림 자동기록) -->
   <div id="page-4" class="page" style="display:none">
-    <div class="info-box blue">💳 토스 결제 알림으로 자동 기록된 카드 결제예요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.</div>
+    <div class="info-box blue">💳 알림으로 자동 기록된 카드 결제와 계좌 입출금이에요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.<br>✎ 항목을 누르면 메모를 남길 수 있어요.</div>
     <div id="cardSummary"></div>
     <div id="cardList" style="display:flex;flex-direction:column;gap:10px"></div>
     <div id="bankList"></div>
@@ -751,7 +753,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, setDoc, getDoc, orderBy, query, onSnapshot }
+import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, setDoc, getDoc, orderBy, query, onSnapshot, updateDoc }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const FB={apiKey:"AIzaSyAts3wNH4Dugw3aCIhfx2l7alElJ8JXFr0",authDomain:"living-expense.firebaseapp.com",projectId:"living-expense",storageBucket:"living-expense.firebasestorage.app",messagingSenderId:"622791791543",appId:"1:622791791543:web:b53d47bfca6043cf6b4e32"};
@@ -818,6 +820,7 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 // ── 탭/스와이프 ──
 window.goPage=function(p){
   curPage=p;
+  try{localStorage.setItem('last_page',p);}catch(e){}
   // 포트폴리오 탭일 때 상단 요약 숨김
   document.getElementById('summaryArea').style.display=p>=4?'none':'block';
   for(let i=0;i<6;i++){
@@ -866,9 +869,11 @@ onAuthStateChanged(auth,async user=>{
     document.getElementById('userAvatar').src=user.photoURL||'';
     document.getElementById('userName').textContent=(user.displayName||'').split(' ')[0];
     listenTx();loadTemplate();loadMonthFix();render();loadAutologCfg();listenInbox();listenCardTx();listenBankTx();
+    {const lp=parseInt(localStorage.getItem('last_page'),10);if(lp>=0&&lp<=5&&lp!==3)goPage(lp);}
     if(gistToken&&gistId)await gistLoad();
     await divLoad();
     fetchFX();setTimeout(()=>refreshPrices(false),1000);
+    if(!window._autoPx)window._autoPx=setInterval(()=>{if(curPage===5&&!document.hidden)refreshPrices(false,true);},60000);
   } else {
     uid=null;
     document.getElementById('loginScreen').style.display='flex';
@@ -1311,11 +1316,15 @@ async function fetchPrice(ticker){
 
 function saveStocks(){localStorage.setItem('stocks_v3',JSON.stringify(stocks));if(gistToken)gistSave();}
 
-async function refreshPrices(show=false){
+async function refreshPrices(show=false,auto=false){
   const st=document.getElementById('portStatus');
   if(show)st.innerHTML='<span class="dot dot-spin"></span>시세 업데이트 중...';
-  await Promise.all(stocks.map(async(s,i)=>{if(!s.ticker)return;const r=await fetchPrice(s.ticker);if(r){stocks[i].cur=r.krw;stocks[i].usd=r.usd;}}));
-  saveStocks();renderPort();
+  const arr=stocks;
+  await Promise.all(arr.map(async(s)=>{if(!s.ticker)return;const r=await fetchPrice(s.ticker);if(r){s.cur=r.krw;s.usd=r.usd;}}));
+  if(arr!==stocks)return;                       // 도중에 목록이 바뀌었으면 이번 결과는 버림
+  if(auto)localStorage.setItem('stocks_v3',JSON.stringify(stocks));   // 자동 갱신은 기기에만 저장 (Gist 기록 남발 방지)
+  else saveStocks();
+  renderPort();
   const t=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
   st.innerHTML=`<span class="dot dot-on"></span>시세 ${t} 기준`;
 }
@@ -1613,10 +1622,18 @@ function renderBankSection(){
   el.innerHTML=`<div class="fcard"><div class="fcard-head cd-head"><span class="cd-name">🏦 계좌 입출금</span><span class="bk-sum"><span class="bk-in">입금 ${fmt(inn)}</span> · <span class="bk-out">출금 ${fmt(out)}</span></span></div>`+
     (list.length?list.map(t=>{const d=new Date(t.at||t.date);const l=bankLabel(t);
       return `<div class="cd-row bk-row"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
-        `<div class="cd-mer"><div><span class="bk-type ${t.type==='입금'?'in':'out'}">${t.type}</span> ${l?`<b>${esc(l)}</b>`:'<span class="bk-none">미분류</span>'}</div><div class="bk-raw">${esc(t.raw)}</div></div>`+
+        `<div class="cd-mer memo-tap" onclick="editMemo('banklog','${t.id}')"><div><span class="bk-type ${t.type==='입금'?'in':'out'}">${t.type}</span> ${l?`<b>${esc(l)}</b>`:'<span class="bk-none">미분류</span>'}</div>${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:''}<div class="bk-raw">${esc(t.raw)}</div></div>`+
         `<div class="cd-amt ${t.type==='입금'?'bk-in':''}">${t.amount?fmt(t.amount):'?'}</div><button class="tx-del" onclick="delBankTx('${t.id}')">×</button></div>`;}).join('')
       :`<div class="empty" style="padding:18px 0">${curM+1}월 입출금 기록이 없어요</div>`)+`</div>`;
 }
+// 카드결제·입출금 메모 (Firestore 문서에 memo 필드만 추가/수정)
+window.editMemo=async function(col,id){
+  const t=(col==='cardtx'?cardTx:bankTx).find(x=>x.id===id);if(!t)return;
+  const v=prompt('메모 (비우면 삭제)',t.memo||'');
+  if(v===null)return;
+  try{await updateDoc(doc(db,'users',uid,col,id),{memo:v.trim()});toast(v.trim()?'메모 저장됐어요 ✓':'메모 지웠어요');}
+  catch(e){toast('메모 저장 실패');}
+};
 window.delBankTx=async function(id){
   if(!confirm('이 입출금 기록을 지울까요?'))return;
   try{await deleteDoc(doc(db,'users',uid,'banklog',id));toast('삭제됐어요');}catch(e){toast('삭제 실패');}
@@ -1648,7 +1665,7 @@ function renderCards(){
     return `<details class="fcard cd-card" open><summary class="fcard-head cd-head"><span class="cd-name">💳 ${esc(c)}</span><span class="cd-cnt">${a.length}건</span><span class="fcard-total">${fmt(sum)}</span></summary>`+
       a.map(t=>{const d=new Date(t.at||t.date);
         return `<div class="cd-row${t.cancel?' cancel':''}"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
-        `<div class="cd-mer">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}</div>`+
+        `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:''}</div>`+
         `<div class="cd-amt">${fmt(t.amount)}</div><button class="tx-del" onclick="delCardTx('${t.id}')">×</button></div>`;}).join('')+
       `</details>`;
   }).join('');
