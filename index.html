@@ -372,6 +372,28 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cd-date span{font-size:10px;color:var(--muted);font-weight:500}
 .cd-mer{flex:1;min-width:0;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .memo-tap{cursor:pointer}
+.cat-btn{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 8px;border-radius:20px;border:1px dashed var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font);max-width:78px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-btn.on{border-style:solid;border-color:var(--accent);background:var(--accent);color:#fff}
+.cat-sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:300;display:flex;align-items:flex-end;justify-content:center}
+.cat-sheet{background:var(--surface);width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:16px 16px 22px;max-height:75vh;overflow:auto}
+.cat-sheet-t{font-size:15px;font-weight:700;color:var(--text)}
+.cat-sheet-s{font-size:12px;color:var(--muted);margin:2px 0 12px}
+.cat-chips{display:flex;flex-wrap:wrap;gap:7px}
+.cat-chip{font-size:13px;font-weight:700;padding:8px 13px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:var(--font)}
+.cat-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.cat-chip .x{margin-left:6px;color:var(--muted);font-weight:400}
+.cat-add{display:flex;gap:6px;margin-top:12px}
+.cat-add input{flex:1;font-size:14px;padding:9px 11px;border:2px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);outline:none;font-family:var(--font)}
+.cat-add button,.cat-sm{font-size:13px;font-weight:700;padding:9px 13px;border-radius:10px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:var(--font)}
+.cat-sm.ghost{background:transparent;color:var(--muted);border:1.5px solid var(--border)}
+.cat-foot{display:flex;gap:8px;margin-top:14px}
+.cat-foot button{flex:1}
+.cs-row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 15px}
+.cs-name{font-size:13px;font-weight:700;color:var(--text)}
+.cs-val{font-size:13px;font-weight:700;color:var(--text);text-align:right}
+.cs-sub{font-size:11px;color:var(--muted);grid-column:1/3}
+.cs-bar{grid-column:1/3;height:6px;background:var(--border);border-radius:99px;overflow:hidden}
+.cs-bar>div{height:100%;background:var(--accent);border-radius:99px}
 .cd-memo{font-size:12px;font-weight:500;color:var(--accent);white-space:normal;word-break:break-all;margin-top:3px;line-height:1.35}
 .cd-plan{font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:6px;padding:1px 5px}
 .cd-plan.red{color:var(--danger);background:var(--danger-light)}
@@ -610,12 +632,14 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 
   <!-- 탭4: 카드 결제내역 (토스 알림 자동기록) -->
   <div id="page-4" class="page" style="display:none">
-    <div class="info-box blue">💳 알림으로 자동 기록된 카드 결제와 계좌 입출금이에요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.<br>✎ 항목을 누르면 메모를 남길 수 있어요.</div>
+    <div class="info-box blue">💳 알림으로 자동 기록된 카드 결제와 계좌 입출금이에요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.<br>✎ 항목을 누르면 메모, <b>분류</b> 버튼을 누르면 항목 지정 → 맨 아래 항목별 통계에 모여요.</div>
     <div id="cardSummary"></div>
     <div id="cardList" style="display:flex;flex-direction:column;gap:10px"></div>
     <div id="bankList"></div>
+    <div id="catStats"></div>
     <button class="autolog-toggle" id="autologToggle" onclick="toggleAutolog()">⚡ 결제알림 자동기록 설정</button>
     <div class="fcard autolog-card" id="autologCard" style="display:none"></div>
+    <div id="catSheetBg" class="cat-sheet-bg" style="display:none" onclick="if(event.target===this)closeCatSheet()"><div class="cat-sheet" id="catSheet"></div></div>
   </div>
 
   <!-- 탭5: 포트폴리오 -->
@@ -868,7 +892,7 @@ onAuthStateChanged(auth,async user=>{
     document.getElementById('mainApp').style.display='flex';
     document.getElementById('userAvatar').src=user.photoURL||'';
     document.getElementById('userName').textContent=(user.displayName||'').split(' ')[0];
-    listenTx();loadTemplate();loadMonthFix();render();loadAutologCfg();listenInbox();listenCardTx();listenBankTx();
+    listenTx();loadTemplate();loadMonthFix();render();loadAutologCfg();listenInbox();listenCardTx();listenBankTx();loadCats();
     {const lp=parseInt(localStorage.getItem('last_page'),10);if(lp>=0&&lp<=5&&lp!==3)goPage(lp);}
     if(gistToken&&gistId)await gistLoad();
     await divLoad();
@@ -1623,8 +1647,78 @@ function renderBankSection(){
     (list.length?list.map(t=>{const d=new Date(t.at||t.date);const l=bankLabel(t);
       return `<div class="cd-row bk-row"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
         `<div class="cd-mer memo-tap" onclick="editMemo('banklog','${t.id}')"><div><span class="bk-type ${t.type==='입금'?'in':'out'}">${t.type}</span> ${l?`<b>${esc(l)}</b>`:'<span class="bk-none">미분류</span>'}</div>${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:''}<div class="bk-raw">${esc(t.raw)}</div></div>`+
-        `<div class="cd-amt ${t.type==='입금'?'bk-in':''}">${t.amount?fmt(t.amount):'?'}</div><button class="tx-del" onclick="delBankTx('${t.id}')">×</button></div>`;}).join('')
+        `${catBtn('banklog',t)}<div class="cd-amt ${t.type==='입금'?'bk-in':''}">${t.amount?fmt(t.amount):'?'}</div><button class="tx-del" onclick="delBankTx('${t.id}')">×</button></div>`;}).join('')
       :`<div class="empty" style="padding:18px 0">${curM+1}월 입출금 기록이 없어요</div>`)+`</div>`;
+}
+
+// ===== 카드/입출금 내 분류 (사용자 정의 항목, 세부내역과 별개) =====
+let cats=[],catTarget=null,catEdit=false;
+async function loadCats(){
+  try{const s=await getDoc(doc(db,'users',uid,'settings','cardcats'));cats=s.exists()&&Array.isArray(s.data().list)?s.data().list:[];}catch(e){cats=[];}
+  if(curPage===4)renderCards();
+}
+async function saveCats(){try{await setDoc(doc(db,'users',uid,'settings','cardcats'),{list:cats});}catch(e){toast('항목 저장 실패');}}
+function catBtn(col,t){
+  return `<button class="cat-btn${t.cat?' on':''}" onclick="openCatSheet('${col}','${t.id}')">${t.cat?esc(t.cat):'분류'}</button>`;
+}
+function catSheetHtml(){
+  const t=catTarget?(catTarget.col==='cardtx'?cardTx:bankTx).find(x=>x.id===catTarget.id):null;
+  const title=catEdit||!t?'분류 항목 관리':(catTarget.col==='cardtx'?esc(t.merchant):`${t.type} ${esc(bankLabel(t)||'')}`);
+  const sub=catEdit||!t?'항목을 추가하거나 ×로 지울 수 있어요':`${fmt(t.amount||0)} · ${t.date||''}`;
+  let h=`<div class="cat-sheet-t">${title}</div><div class="cat-sheet-s">${sub}</div>`;
+  if(!cats.length)h+=`<div class="cat-sheet-s" style="margin:0 0 4px">아직 항목이 없어요. 아래에 입력해서 추가하세요.</div>`;
+  h+=`<div class="cat-chips">${cats.map((c,i)=>catEdit||!t
+      ?`<button class="cat-chip" onclick="delCat(${i})">${esc(c)}<span class="x">×</span></button>`
+      :`<button class="cat-chip${t.cat===c?' on':''}" onclick="pickCat(${i})">${esc(c)}</button>`).join('')}</div>`;
+  if(catEdit||!t||!cats.length)h+=`<div class="cat-add"><input id="catNew" placeholder="예: 주유, 외식, 아이 학원" maxlength="20" onkeydown="if(event.key==='Enter')addCat()"><button onclick="addCat()">추가</button></div>`;
+  h+=`<div class="cat-foot">`+(t&&!catEdit?`<button class="cat-sm ghost" onclick="pickCat(-1)">분류 해제</button><button class="cat-sm ghost" onclick="catEdit=true;drawCatSheet()">항목 관리</button>`:(t?`<button class="cat-sm ghost" onclick="catEdit=false;drawCatSheet()">← 분류 고르기</button>`:''))+`<button class="cat-sm" onclick="closeCatSheet()">닫기</button></div>`;
+  return h;
+}
+function drawCatSheet(){document.getElementById('catSheet').innerHTML=catSheetHtml();}
+window.openCatSheet=function(col,id){catTarget=col?{col,id}:null;catEdit=!col;drawCatSheet();document.getElementById('catSheetBg').style.display='flex';};
+window.closeCatSheet=function(){document.getElementById('catSheetBg').style.display='none';catTarget=null;catEdit=false;};
+window.drawCatSheet=drawCatSheet;
+window.addCat=async function(){
+  const el=document.getElementById('catNew');const v=(el&&el.value||'').trim();if(!v)return;
+  if(cats.includes(v)){toast('이미 있는 항목이에요');return;}
+  cats.push(v);await saveCats();drawCatSheet();renderCards();
+  const n=document.getElementById('catNew');if(n)n.focus();
+};
+window.delCat=async function(i){
+  const c=cats[i];if(!confirm(`'${c}' 항목을 지울까요?\n이미 분류된 기록은 그대로 남아요.`))return;
+  cats.splice(i,1);await saveCats();drawCatSheet();renderCards();
+};
+window.pickCat=async function(i){
+  if(!catTarget)return;const v=i<0?'':cats[i];const {col,id}=catTarget;
+  closeCatSheet();
+  try{await updateDoc(doc(db,'users',uid,col,id),{cat:v});toast(v?`${v}(으)로 분류했어요 ✓`:'분류를 해제했어요');}catch(e){toast('분류 저장 실패');}
+};
+function renderCatStats(){
+  const el=document.getElementById('catStats');if(!el)return;
+  const k=curMk();
+  const card=cardTx.filter(t=>t.date&&t.date.slice(0,7)===k);
+  const bank=bankTx.filter(t=>t.date&&t.date.slice(0,7)===k);
+  const by={};
+  const add=(name,kind,amt)=>{const o=by[name]||(by[name]={card:0,out:0,inn:0,cnt:0});o[kind]+=amt||0;o.cnt++;};
+  card.forEach(t=>add(t.cat||'',`card`,t.amount));
+  bank.forEach(t=>add(t.cat||'',t.type==='입금'?'inn':'out',t.amount));
+  const rows=Object.entries(by).filter(([n])=>n).map(([n,o])=>({...o,n,spend:o.card+o.out})).sort((a,b)=>(b.spend-a.spend)||(b.inn-a.inn));
+  const un=by['']||{card:0,out:0,inn:0,cnt:0};
+  const totSpend=rows.reduce((s,r)=>s+r.spend,0);
+  const maxS=Math.max(1,...rows.map(r=>r.spend)),maxI=Math.max(1,...rows.map(r=>r.inn));
+  let h=`<div class="fcard"><div class="fcard-head cd-head"><span class="cd-name">📊 ${curM+1}월 항목별 통계</span><button class="cat-sm ghost" style="padding:5px 10px;font-size:12px" onclick="openCatSheet()">항목 관리</button></div>`;
+  if(!rows.length){
+    h+=`<div class="empty" style="padding:16px 0">${cats.length?'카드·입출금 옆 <b>분류</b> 버튼으로 항목을 지정하면 여기에 모여요':'먼저 <b>항목 관리</b>에서 분류 항목을 만들어 주세요'}</div>`;
+  }else{
+    h+=rows.map(r=>{
+      const parts=[];if(r.card)parts.push(`카드 ${fmt(r.card)}`);if(r.out)parts.push(`출금 ${fmt(r.out)}`);if(r.inn)parts.push(`입금 ${fmt(r.inn)}`);
+      const main=r.spend?fmt(r.spend):`<span class="bk-in">+${fmt(r.inn)}</span>`;
+      const pct=r.spend&&totSpend?` · ${Math.round(r.spend/totSpend*100)}%`:'';
+      return `<div class="cs-row"><span class="cs-name">${esc(r.n)}</span><span class="cs-val">${main}</span><div class="cs-bar"><div style="width:${(r.spend?r.spend/maxS:r.inn/maxI)*100}%;${r.spend?'':'background:#2563eb'}"></div></div><span class="cs-sub">${r.cnt}건 · ${parts.join(' · ')}${pct}</span></div>`;
+    }).join('');
+    h+=`<div class="cs-row" style="border-top:1px solid var(--border)"><span class="cs-name">분류된 지출 합계</span><span class="cs-val">${fmt(totSpend)}</span>${un.cnt?`<span class="cs-sub">미분류 ${un.cnt}건 (카드 ${fmt(un.card)} · 출금 ${fmt(un.out)} · 입금 ${fmt(un.inn)})</span>`:''}</div>`;
+  }
+  el.innerHTML=h+`</div>`;
 }
 // 카드결제·입출금 메모 (Firestore 문서에 memo 필드만 추가/수정)
 window.editMemo=async function(col,id){
@@ -1650,6 +1744,7 @@ function listenCardTx(){
 }
 function renderCards(){
   renderBankSection();
+  renderCatStats();
   const k=curMk();
   const list=cardTx.filter(t=>t.date&&t.date.slice(0,7)===k);
   const total=list.reduce((s,t)=>s+t.amount,0);
@@ -1666,7 +1761,7 @@ function renderCards(){
       a.map(t=>{const d=new Date(t.at||t.date);
         return `<div class="cd-row${t.cancel?' cancel':''}"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
         `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:''}</div>`+
-        `<div class="cd-amt">${fmt(t.amount)}</div><button class="tx-del" onclick="delCardTx('${t.id}')">×</button></div>`;}).join('')+
+        `${catBtn('cardtx',t)}<div class="cd-amt">${fmt(t.amount)}</div><button class="tx-del" onclick="delCardTx('${t.id}')">×</button></div>`;}).join('')+
       `</details>`;
   }).join('');
 }
