@@ -381,6 +381,8 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cat-chips{display:flex;flex-wrap:wrap;gap:7px}
 .cat-chip{font-size:13px;font-weight:700;padding:8px 13px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:var(--font)}
 .cat-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.cat-chip.sug{border-color:var(--accent);color:var(--accent);background:rgba(45,106,34,.08);padding:10px 16px;font-size:14px}
+.sug-tag{font-size:10px;font-weight:700;background:var(--accent);color:#fff;border-radius:6px;padding:2px 5px;margin-right:6px;vertical-align:1px}
 .cat-chip .x{margin-left:6px;color:var(--muted);font-weight:400}
 .cat-add{display:flex;gap:6px;margin-top:12px}
 .cat-add input{flex:1;font-size:14px;padding:9px 11px;border:2px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);outline:none;font-family:var(--font)}
@@ -1662,15 +1664,27 @@ async function saveCats(){try{await setDoc(doc(db,'users',uid,'settings','cardca
 function catBtn(col,t){
   return `<button class="cat-btn${t.cat?' on':''}" onclick="openCatSheet('${col}','${t.id}')">${t.cat?esc(t.cat):'분류'}</button>`;
 }
+// 추천: 같은 가맹점(카드) / 같은 문구(입출금)로 가장 최근에 고른 항목
+function bankKey(t){return (t.type||'')+'|'+String(t.raw||'').replace(/잔액[^가-힣a-zA-Z]*/g,' ').replace(/[\d,.:\/\-*()~]+/g,' ').replace(/원/g,' ').replace(/\s+/g,' ').trim();}
+function suggestCat(col,t){
+  const list=col==='cardtx'?cardTx:bankTx;
+  const key=col==='cardtx'?x=>(x.merchant||'').trim():bankKey;
+  const k=key(t);if(!k)return '';
+  const hit=list.filter(x=>x.id!==t.id&&x.cat&&cats.includes(x.cat)&&key(x)===k).sort((a,b)=>(b.at||0)-(a.at||0))[0];
+  return hit?hit.cat:'';
+}
 function catSheetHtml(){
   const t=catTarget?(catTarget.col==='cardtx'?cardTx:bankTx).find(x=>x.id===catTarget.id):null;
   const title=catEdit||!t?'분류 항목 관리':(catTarget.col==='cardtx'?esc(t.merchant):`${t.type} ${esc(bankLabel(t)||'')}`);
   const sub=catEdit||!t?'항목을 추가하거나 ×로 지울 수 있어요':`${fmt(t.amount||0)} · ${t.date||''}`;
   let h=`<div class="cat-sheet-t">${title}</div><div class="cat-sheet-s">${sub}</div>`;
   if(!cats.length)h+=`<div class="cat-sheet-s" style="margin:0 0 4px">아직 항목이 없어요. 아래에 입력해서 추가하세요.</div>`;
-  h+=`<div class="cat-chips">${cats.map((c,i)=>catEdit||!t
+  const sug=t&&!catEdit&&!t.cat?suggestCat(catTarget.col,t):'';
+  const order=cats.map((c,i)=>i);if(sug){const si=cats.indexOf(sug);order.splice(order.indexOf(si),1);order.unshift(si);}
+  if(sug)h+=`<div class="cat-sheet-s" style="margin:-6px 0 8px">지난번에 <b>${esc(sug)}</b>(으)로 분류했어요. 누르면 바로 확정돼요.</div>`;
+  h+=`<div class="cat-chips">${order.map(i=>{const c=cats[i];return catEdit||!t
       ?`<button class="cat-chip" onclick="delCat(${i})">${esc(c)}<span class="x">×</span></button>`
-      :`<button class="cat-chip${t.cat===c?' on':''}" onclick="pickCat(${i})">${esc(c)}</button>`).join('')}</div>`;
+      :`<button class="cat-chip${t.cat===c?' on':''}${sug===c?' sug':''}" onclick="pickCat(${i})">${sug===c?'<span class="sug-tag">추천</span>':''}${esc(c)}</button>`;}).join('')}</div>`;
   if(catEdit||!t||!cats.length)h+=`<div class="cat-add"><input id="catNew" placeholder="예: 주유, 외식, 아이 학원" maxlength="20" onkeydown="if(event.key==='Enter')addCat()"><button onclick="addCat()">추가</button></div>`;
   h+=`<div class="cat-foot">`+(t&&!catEdit?`<button class="cat-sm ghost" onclick="pickCat(-1)">분류 해제</button><button class="cat-sm ghost" onclick="catEdit=true;drawCatSheet()">항목 관리</button>`:(t?`<button class="cat-sm ghost" onclick="catEdit=false;drawCatSheet()">← 분류 고르기</button>`:''))+`<button class="cat-sm" onclick="closeCatSheet()">닫기</button></div>`;
   return h;
