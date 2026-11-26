@@ -375,6 +375,11 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cat-btn{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 8px;border-radius:20px;border:1px dashed var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font);max-width:78px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cat-btn.on{border-style:solid;border-color:var(--accent);background:var(--accent);color:#fff}
 .cat-btn.sug{border:1.5px solid #d97706;background:#fff7e6;color:#b45309}
+.cat-btn.brush{border-style:solid;border-color:var(--accent);color:var(--accent);background:rgba(45,106,34,.08)}
+.catbar{padding:12px 14px}
+.catbar-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.catbar-t{font-size:14px;font-weight:700;color:var(--text)}
+.catbar-hint{font-size:12px;color:var(--accent);margin-top:10px;line-height:1.45}
 .cat-pair{display:flex;gap:4px;flex-shrink:0}
 .cat-sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:300;display:flex;align-items:flex-end;justify-content:center}
 .cat-sheet{background:var(--surface);width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:16px 16px 22px;max-height:75vh;overflow:auto}
@@ -637,7 +642,8 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 
   <!-- 탭4: 카드 결제내역 (토스 알림 자동기록) -->
   <div id="page-4" class="page" style="display:none">
-    <div class="info-box blue">💳 알림으로 자동 기록된 카드 결제와 계좌 입출금이에요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.<br>✎ 항목을 누르면 메모, <b>분류</b> 버튼을 누르면 항목 지정 → 맨 아래 항목별 통계에 모여요.</div>
+    <div class="info-box blue">💳 알림으로 자동 기록된 카드 결제와 계좌 입출금이에요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.<br>✎ 항목을 누르면 메모 · 아래 <b>분류항목</b>에서 항목을 골라두면 각 내역의 버튼 한 번으로 분류돼요.</div>
+    <div id="catBar"></div>
     <div id="cardSummary"></div>
     <div id="cardList" style="display:flex;flex-direction:column;gap:10px"></div>
     <div id="bankList"></div>
@@ -1657,14 +1663,31 @@ function renderBankSection(){
 }
 
 // ===== 카드/입출금 내 분류 (사용자 정의 항목, 세부내역과 별개) =====
-let cats=[],catTarget=null,catEdit=false;
+let cats=[],catTarget=null,catEdit=false,brushCat='';
+// 맨 위 분류항목 바: 항목을 골라두면 아래 분류 버튼 한 번으로 그 항목에 넣기
+function renderCatBar(){
+  const el=document.getElementById('catBar');if(!el)return;
+  if(brushCat&&!cats.includes(brushCat))brushCat='';
+  let h=`<div class="fcard catbar"><div class="catbar-top"><span class="catbar-t">🏷 분류항목</span><button class="cat-sm ghost" style="padding:5px 10px;font-size:12px" onclick="openCatSheet()">항목 관리</button></div>`;
+  h+=cats.length?`<div class="cat-chips">${cats.map((c,i)=>`<button class="cat-chip${brushCat===c?' on':''}" onclick="setBrush(${i})">${esc(c)}</button>`).join('')}</div>`
+    :`<div class="cat-sheet-s" style="margin:0">항목 관리에서 분류항목을 먼저 만들어 주세요</div>`;
+  if(brushCat)h+=`<div class="catbar-hint">✓ <b>${esc(brushCat)}</b> 선택됨 · 아래 내역의 <b>+ ${esc(brushCat)}</b> 버튼을 누르면 바로 들어가요. 같은 칩을 다시 누르면 해제돼요.</div>`;
+  el.innerHTML=h+`</div>`;
+}
+window.setBrush=function(i){const c=cats[i];brushCat=brushCat===c?'':c;renderCards();};
+window.catTap=async function(col,id){
+  if(!brushCat){openCatSheet(col,id);return;}
+  const t=(col==='cardtx'?cardTx:bankTx).find(x=>x.id===id);if(!t)return;
+  const v=t.cat===brushCat?'':brushCat;       // 이미 같은 항목이면 다시 눌러서 해제
+  try{await updateDoc(doc(db,'users',uid,col,id),{cat:v});toast(v?`${v}(으)로 분류했어요 ✓`:'분류를 해제했어요');}catch(e){toast('분류 저장 실패');}
+};
 async function loadCats(){
   try{const s=await getDoc(doc(db,'users',uid,'settings','cardcats'));cats=s.exists()&&Array.isArray(s.data().list)?s.data().list:[];}catch(e){cats=[];}
   if(curPage===4)renderCards();
 }
 async function saveCats(){try{await setDoc(doc(db,'users',uid,'settings','cardcats'),{list:cats});}catch(e){toast('항목 저장 실패');}}
 function catBtn(col,t){
-  const main=`<button class="cat-btn${t.cat?' on':''}" onclick="openCatSheet('${col}','${t.id}')">${t.cat?esc(t.cat):'분류'}</button>`;
+  const main=`<button class="cat-btn${t.cat?' on':(brushCat?' brush':'')}" onclick="catTap('${col}','${t.id}')">${t.cat?esc(t.cat):(brushCat?'+ '+esc(brushCat):'분류')}</button>`;
   if(t.cat)return main;
   const sug=suggestCat(col,t);
   if(!sug)return main;
@@ -1769,6 +1792,7 @@ function listenCardTx(){
   },e=>console.warn('cardtx',e));
 }
 function renderCards(){
+  renderCatBar();
   renderBankSection();
   renderCatStats();
   const k=curMk();
