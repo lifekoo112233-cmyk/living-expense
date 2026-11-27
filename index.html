@@ -642,7 +642,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 
   <!-- 탭4: 카드 결제내역 (토스 알림 자동기록) -->
   <div id="page-4" class="page" style="display:none">
-    <div class="info-box blue">💳 알림으로 자동 기록된 카드 결제와 계좌 입출금이에요.<br>세부내역과는 따로 보관돼서 합계에 더해지지 않아요.<br>✎ 항목을 누르면 메모 · 아래 <b>분류항목</b>에서 항목을 골라두면 각 내역의 버튼 한 번으로 분류돼요.</div>
+    <div class="info-box blue">💳 알림 자동기록 내역 · 세부내역과 따로 보관</div>
     <div id="catBar"></div>
     <div id="cardSummary"></div>
     <div id="cardList" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -1648,18 +1648,36 @@ function paidMap(k,type='출금'){
   });
   return m;
 }
+// 은행 구분: 알림 원문에서 가장 앞에 나오는 은행 이름으로 판단
+const BANKS=[['농협',/농협|NH|nonghyup/i],['국민은행',/KB|국민(?!연금|건강|카드)|스타뱅킹/i]];
+function bankOf(t){
+  const raw=String(t.raw||'');let best='',bi=1e9;
+  BANKS.forEach(([n,re])=>{const i=raw.search(re);if(i>=0&&i<bi){bi=i;best=n;}});
+  return best||'기타 계좌';
+}
+// 접힘 상태 기억 (새 기록이 들어와 다시 그려져도 유지)
+const cdFold=new Set();
+window.cdToggle=function(el,key){if(el.open)cdFold.delete(key);else cdFold.add(key);};
+function cdOpen(key){return cdFold.has(key)?'':' open';}
 function renderBankSection(){
   const el=document.getElementById('bankList');if(!el)return;
   const k=curMk();
   const list=bankTx.filter(t=>t.date&&t.date.slice(0,7)===k).sort((a,b)=>(b.at||0)-(a.at||0));
-  const out=list.filter(t=>t.type==='출금').reduce((s,t)=>s+(t.amount||0),0);
-  const inn=list.filter(t=>t.type==='입금').reduce((s,t)=>s+(t.amount||0),0);
-  el.innerHTML=`<div class="fcard"><div class="fcard-head cd-head"><span class="cd-name">🏦 계좌 입출금</span><span class="bk-sum"><span class="bk-in">입금 ${fmt(inn)}</span> · <span class="bk-out">출금 ${fmt(out)}</span></span></div>`+
-    (list.length?list.map(t=>{const d=new Date(t.at||t.date);const l=bankLabel(t);
+  if(!list.length){el.innerHTML=`<div class="fcard"><div class="fcard-head cd-head"><span class="cd-name">🏦 계좌 입출금</span></div><div class="empty" style="padding:18px 0">${curM+1}월 입출금 기록이 없어요</div></div>`;return;}
+  const by={};list.forEach(t=>{const b=bankOf(t);(by[b]||(by[b]=[])).push(t);});
+  const order=['농협','국민은행','기타 계좌'].filter(b=>by[b]);
+  el.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px">`+order.map(b=>{
+    const a=by[b];
+    const out=a.filter(t=>t.type==='출금').reduce((s,t)=>s+(t.amount||0),0);
+    const inn=a.filter(t=>t.type==='입금').reduce((s,t)=>s+(t.amount||0),0);
+    const key='bank:'+b;
+    return `<details class="fcard cd-card"${cdOpen(key)} ontoggle="cdToggle(this,'${key}')"><summary class="fcard-head cd-head"><span class="cd-name">🏦 ${b}</span><span class="cd-cnt">${a.length}건</span><span class="bk-sum"><span class="bk-in">입금 ${fmt(inn)}</span> · <span class="bk-out">출금 ${fmt(out)}</span></span></summary>`+
+      a.map(t=>{const d=new Date(t.at||t.date);const l=bankLabel(t);
       return `<div class="cd-row bk-row"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
         `<div class="cd-mer memo-tap" onclick="editMemo('banklog','${t.id}')"><div><span class="bk-type ${t.type==='입금'?'in':'out'}">${t.type}</span> ${l?`<b>${esc(l)}</b>`:'<span class="bk-none">미분류</span>'}</div>${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}<div class="bk-raw">${esc(t.raw)}</div></div>`+
-        `${catBtn('banklog',t)}<div class="cd-amt ${t.type==='입금'?'bk-in':''}">${t.amount?fmt(t.amount):'?'}</div><button class="tx-del" onclick="delBankTx('${t.id}')">×</button></div>`;}).join('')
-      :`<div class="empty" style="padding:18px 0">${curM+1}월 입출금 기록이 없어요</div>`)+`</div>`;
+        `${catBtn('banklog',t)}<div class="cd-amt ${t.type==='입금'?'bk-in':''}">${t.amount?fmt(t.amount):'?'}</div><button class="tx-del" onclick="delBankTx('${t.id}')">×</button></div>`;}).join('')+
+      `</details>`;
+  }).join('')+`</div>`;
 }
 
 // ===== 카드/입출금 내 분류 (사용자 정의 항목, 세부내역과 별개) =====
@@ -1807,7 +1825,8 @@ function renderCards(){
   const by={};list.forEach(t=>{(by[t.card]||(by[t.card]=[])).push(t);});
   el.innerHTML=Object.entries(by).map(([c,a])=>[c,a,a.reduce((s,t)=>s+t.amount,0)]).sort((x,y)=>y[2]-x[2]).map(([c,a,sum])=>{
     a.sort((x,y)=>(y.at||0)-(x.at||0));
-    return `<details class="fcard cd-card" open><summary class="fcard-head cd-head"><span class="cd-name">💳 ${esc(c)}</span><span class="cd-cnt">${a.length}건</span><span class="fcard-total">${fmt(sum)}</span></summary>`+
+    const key='card:'+c;
+    return `<details class="fcard cd-card"${cdOpen(key)} ontoggle="cdToggle(this,'${key.replace(/'/g,"\\'")}')"><summary class="fcard-head cd-head"><span class="cd-name">💳 ${esc(c)}</span><span class="cd-cnt">${a.length}건</span><span class="fcard-total">${fmt(sum)}</span></summary>`+
       a.map(t=>{const d=new Date(t.at||t.date);
         return `<div class="cd-row${t.cancel?' cancel':''}"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
         `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}</div>`+
