@@ -368,6 +368,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cd-sum3 .cd-sum-l{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-sum3-v{font-size:17px;font-weight:900;letter-spacing:-.5px;margin:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-sum3 .cd-sum-s{font-size:11px;line-height:1.35}
+.cd-sum3-k{font-size:11px;font-weight:700}
 .cd-head{cursor:pointer;list-style:none;flex-wrap:nowrap}
 .cd-head::-webkit-details-marker{display:none}
 .cd-name{font-size:15px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1836,7 +1837,7 @@ function renderCards(){
   const bk=bankTx.filter(t=>t.date&&t.date.slice(0,7)===k);
   const bSum=b=>{const a=bk.filter(t=>bankOf(t)===b);
     const inn=a.filter(t=>t.type==='입금').reduce((s,t)=>s+(t.amount||0),0),out=a.filter(t=>t.type==='출금').reduce((s,t)=>s+(t.amount||0),0);
-    return `<div class="cd-sum3"><div class="cd-sum-l">🏦 ${b==='농협'?'농협은행':b}</div><div class="cd-sum3-v bk-out">${out?"-"+fmt(out):fmt(0)}</div><div class="cd-sum-s"><span class="bk-in">입금 ${fmt(inn)}</span><br>${a.length}건</div></div>`;};
+    return `<div class="cd-sum3"><div class="cd-sum-l">🏦 ${b==='농협'?'농협은행':b}</div><div class="cd-sum3-v bk-out"><span class="cd-sum3-k">출금</span> ${fmt(out)}</div><div class="cd-sum-s"><span class="bk-in">입금 ${fmt(inn)}</span><br>${a.length}건</div></div>`;};
   document.getElementById('cardSummary').innerHTML=
     `<div class="cd-sum"><div class="cd-sum-grid">`+
     `<div class="cd-sum3"><div class="cd-sum-l">💳 ${mLabel} 카드결제</div><div class="cd-sum3-v">${fmt(total)}</div><div class="cd-sum-s">${pays}건${list.length-pays?`<br>취소 ${list.length-pays}건`:''}</div></div>`+
