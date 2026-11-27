@@ -364,15 +364,17 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cd-sum-s{font-size:12px;color:var(--muted);font-weight:500}
 .cd-sum-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .cd-sum3{min-width:0}
-.cd-sum-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)}
-.cd-sum-tv{font-size:20px;font-weight:900;letter-spacing:-.5px}
-.cd-sum-bank{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);grid-template-columns:repeat(2,1fr)}
-.cd-sum-grid .cd-sum3:nth-child(3n+1){border-left:none;padding-left:0}
+.cd-sum-c{display:flex;justify-content:space-between;gap:4px;font-size:11px;color:var(--muted);font-weight:600;line-height:1.45}
+.cd-sum-c span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-sum-c b{color:var(--text);font-weight:700;white-space:nowrap}
 .cd-sum3+.cd-sum3{border-left:1px solid var(--border);padding-left:8px}
 .cd-sum3 .cd-sum-l{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-sum3-v{font-size:17px;font-weight:900;letter-spacing:-.5px;margin:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cd-sum3 .cd-sum-s{font-size:11px;line-height:1.35}
 .cd-sum3-k{font-size:11px;font-weight:700}
+.cd-sum3-v.wrap{white-space:normal;overflow:visible;line-height:1.2}
+.cd-sum3-v .nw{white-space:nowrap}
+@media (max-width:440px){.cd-sum3-v{font-size:15px;letter-spacing:-.6px}}
 .cd-head{cursor:pointer;list-style:none;flex-wrap:nowrap}
 .cd-head::-webkit-details-marker{display:none}
 .cd-name{font-size:15px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1843,11 +1845,13 @@ function renderCards(){
   const bk=bankTx.filter(t=>t.date&&t.date.slice(0,7)===k);
   const bSum=b=>{const a=bk.filter(t=>bankOf(t)===b);
     const inn=a.filter(t=>t.type==='입금').reduce((s,t)=>s+(t.amount||0),0),out=a.filter(t=>t.type==='출금').reduce((s,t)=>s+(t.amount||0),0);
-    return `<div class="cd-sum3"><div class="cd-sum-l">🏦 ${b==='농협'?'농협은행':b}</div><div class="cd-sum3-v bk-out"><span class="cd-sum3-k">출금</span> ${fmt(out)}</div><div class="cd-sum-s"><span class="bk-in">입금 ${fmt(inn)}</span><br>${a.length}건</div></div>`;};
+    return `<div class="cd-sum3"><div class="cd-sum-l">🏦 ${b==='농협'?'농협은행':b}</div><div class="cd-sum3-v bk-out wrap"><span class="cd-sum3-k">출금</span> <span class="nw">${fmt(out)}</span></div><div class="cd-sum-s"><span class="bk-in">입금 ${fmt(inn)}</span><br>${a.length}건</div></div>`;};
   document.getElementById('cardSummary').innerHTML=
-    `<div class="cd-sum"><div class="cd-sum-top"><span class="cd-sum-l">💳 ${mLabel} 카드결제</span><span class="cd-sum-tv">${fmt(total)}</span><span class="cd-sum-s">${pays}건${list.length-pays?` · 취소 ${list.length-pays}건`:''}</span></div>`+
-    (list.length?`<div class="cd-sum-grid">`+cSums.map(([c,sum,n])=>`<div class="cd-sum3"><div class="cd-sum-l">💳 ${esc(c)}</div><div class="cd-sum3-v">${fmt(sum)}</div><div class="cd-sum-s">${n}건</div></div>`).join('')+`</div>`:'')+
-    `<div class="cd-sum-grid cd-sum-bank">`+bSum('국민은행')+bSum('농협')+`</div></div>`;
+    `<div class="cd-sum"><div class="cd-sum-grid">`+
+    `<div class="cd-sum3"><div class="cd-sum-l">💳 ${mLabel} 카드결제</div><div class="cd-sum3-v">${fmt(total)}</div>`+
+    (cSums.length?cSums.map(([c,sum,n])=>`<div class="cd-sum-c"><span>${esc(c)}</span><b>${fmt(sum)}</b></div>`).join(''):'')+
+    `<div class="cd-sum-s">${pays}건${list.length-pays?` · 취소 ${list.length-pays}건`:''}</div></div>`+
+    bSum('국민은행')+bSum('농협')+`</div></div>`;
   const el=document.getElementById('cardList');
   if(!list.length){el.innerHTML=`<div class="empty">${mLabel} 카드 결제 기록이 없어요</div>`;return;}
   const by={};list.forEach(t=>{(by[t.card]||(by[t.card]=[])).push(t);});
