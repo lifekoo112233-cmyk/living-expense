@@ -432,7 +432,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cd-memo{font-size:12px;font-weight:500;color:var(--accent);white-space:normal;word-break:break-all;margin-top:3px;line-height:1.35}
 .cd-memo.add{font-size:11px;color:var(--muted);font-weight:400}
 .cd-plan{font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:6px;padding:1px 5px}
-.cd-loc{text-decoration:none;font-size:13px;padding:0 2px}
+.cd-loc{font-size:13px;padding:0 4px;cursor:pointer}
 .cd-plan.red{color:var(--danger);background:var(--danger-light)}
 .cd-amt{font-size:14px;font-weight:900;flex-shrink:0}
 .cd-row.cancel .cd-amt,.cd-row.cancel .cd-mer{color:var(--muted)}
@@ -677,6 +677,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
     <div id="catStats"></div>
     <button class="autolog-toggle" id="autologToggle" onclick="toggleAutolog()">⚡ 결제알림 자동기록 설정</button>
     <div class="fcard autolog-card" id="autologCard" style="display:none"></div>
+    <div id="locSheetBg" class="cat-sheet-bg" style="display:none" onclick="if(event.target===this)closeLoc()"><div class="cat-sheet" id="locSheet"></div></div>
     <div id="catSheetBg" class="cat-sheet-bg" style="display:none" onclick="if(event.target===this)closeCatSheet()"><div class="cat-sheet" id="catSheet"></div></div>
   </div>
 
@@ -815,7 +816,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, setDoc, getDoc, orderBy, query, onSnapshot, updateDoc }
+import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, setDoc, getDoc, orderBy, query, onSnapshot, updateDoc, deleteField }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const FB={apiKey:"AIzaSyAts3wNH4Dugw3aCIhfx2l7alElJ8JXFr0",authDomain:"living-expense.firebaseapp.com",projectId:"living-expense",storageBucket:"living-expense.firebasestorage.app",messagingSenderId:"622791791543",appId:"1:622791791543:web:b53d47bfca6043cf6b4e32"};
@@ -1885,7 +1886,7 @@ function renderCards(){
     return `<details class="fcard cd-card"${cdOpen(key)} ontoggle="cdToggle(this,'${key.replace(/'/g,"\\'")}')"><summary class="fcard-head cd-head"><span class="cd-name">💳 ${esc(c)}</span><span class="cd-cnt">${a.length}건</span><span class="fcard-total">${fmt(sum)}</span></summary>`+
       cdRows(key,a,t=>{const d=new Date(t.at||t.date);
         return `<div class="cd-row${t.cancel?' cancel':''}"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
-        `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.loc?` <a class="cd-loc" href="${locUrl(t.loc)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="결제한 위치 보기">📍</a>`:''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}</div>`+
+        `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.loc?` <span class="cd-loc" onclick="event.stopPropagation();openLoc('${t.id}')" title="결제 위치">📍</span>`:''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}</div>`+
         `${catBtn('cardtx',t)}<div class="cd-amt">${fmt(t.amount)}</div><button class="tx-del" onclick="delCardTx('${t.id}')">×</button></div>`;})+
       `</details>`;
   }).join('');
@@ -1919,6 +1920,26 @@ function splitLoc(text){
   return{text:text.slice(0,m.index),loc};
 }
 const locUrl=l=>`https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}`;
+// 📍 누르면: 지도 보기 / 메모 / 위치 지우기 (가족이 결제해서 위치가 틀린 경우 등)
+let locId=null;
+window.openLoc=function(id){
+  const t=cardTx.find(x=>x.id===id);if(!t||!t.loc)return;locId=id;
+  document.getElementById('locSheet').innerHTML=
+    `<div class="cat-sheet-t">📍 ${esc(t.merchant)}</div><div class="cat-sheet-s">${fmt(t.amount)} · ${esc(t.card||'')} · ${t.date||''}${t.memo?`<br>📝 ${esc(t.memo)}`:''}</div>`+
+    `<div class="cat-sheet-s" style="margin:-4px 0 4px">위치는 결제 알림을 받은 순간 내 폰의 위치예요. 가족이 결제했다면 위치를 지우거나 메모로 남겨 두세요.</div>`+
+    `<div class="cat-foot"><button class="cat-sm" onclick="locMap()">지도 보기</button><button class="cat-sm ghost" onclick="locMemo()">메모</button></div>`+
+    `<div class="cat-foot" style="margin-top:8px"><button class="cat-sm ghost" style="color:#dc2626;border-color:#fca5a5" onclick="locDel()">위치 지우기</button><button class="cat-sm ghost" onclick="closeLoc()">닫기</button></div>`;
+  document.getElementById('locSheetBg').style.display='flex';
+};
+window.closeLoc=function(){document.getElementById('locSheetBg').style.display='none';locId=null;};
+window.locMap=function(){const t=cardTx.find(x=>x.id===locId);if(t&&t.loc)window.open(locUrl(t.loc),'_blank','noopener');closeLoc();};
+window.locMemo=function(){const id=locId;closeLoc();if(id)editMemo('cardtx',id);};
+window.locDel=async function(){
+  const id=locId;if(!id)return;
+  if(!confirm('이 결제의 위치를 지울까요?\n결제 기록과 메모는 그대로 남아요.'))return;
+  closeLoc();
+  try{await updateDoc(doc(db,'users',uid,'cardtx',id),{loc:deleteField()});toast('위치를 지웠어요');}catch(e){toast('위치 삭제 실패');}
+};
 function parseTossNoti(title,text){
   title=String(title||'').trim();text=String(text||'').trim();
   const all=title+' '+text;
