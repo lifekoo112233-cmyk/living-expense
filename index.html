@@ -2067,7 +2067,7 @@ function renderAutolog(){
       `<div class="al-label">URL · 방식 POST</div><div class="al-row"><code class="al-code wrap">${esc(alInboxUrl())}</code><button class="al-btn ghost" onclick="alCopy('url')">복사</button></div>`+
       `<div class="al-label">본문 · application/json</div><div class="al-row"><code class="al-code wrap">${esc(alBody())}</code><button class="al-btn ghost" onclick="alCopy('body')">복사</button></div>`+
       `<div class="al-desc">붙여넣은 뒤 <b>여기에_알림제목</b>, <b>여기에_알림내용</b> 글자를 지우고 그 자리에 MacroDroid의 <b>…</b> 버튼으로 '알림 제목', '알림 텍스트'를 넣으세요.</div>`+
-      `<div class="al-desc">📍 결제 위치도 남기려면 <b>여기에_위치</b> 자리에 MacroDroid의 <b>…</b> 버튼으로 위치(위도,경도)를 넣고, HTTP 요청 바로 앞에 <b>'위치 강제 업데이트'</b> 동작을 추가하세요. 위치가 필요 없으면 <b>[위치:여기에_위치]</b> 부분을 통째로 지우면 돼요.</div>`+
+      `<div class="al-desc">📍 결제 위치도 남기려면 HTTP 요청 앞에 <b>'위치 공유'</b> 동작을 넣어 위치를 변수(위도,경도 형식)에 저장하고, <b>여기에_위치</b> 자리에 <b>…</b> 버튼으로 그 변수를 넣으세요. 위치가 필요 없으면 <b>[위치:여기에_위치]</b> 부분을 통째로 지우면 돼요.</div>`+
     `</div>`:'')+
     `<div class="al-step"><div class="al-h">③ 카드 이름 바꾸기</div>`+
       `<div class="al-desc">알림에 찍히는 카드사 이름을 세부내역에서 쓸 이름으로 바꿔요. 새 카드가 들어오면 자동으로 추가돼요.</div>`+
