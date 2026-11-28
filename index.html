@@ -432,6 +432,7 @@ html,body{font-family:var(--font);background:var(--bg);color:var(--text);min-hei
 .cd-memo{font-size:12px;font-weight:500;color:var(--accent);white-space:normal;word-break:break-all;margin-top:3px;line-height:1.35}
 .cd-memo.add{font-size:11px;color:var(--muted);font-weight:400}
 .cd-plan{font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-light);border-radius:6px;padding:1px 5px}
+.cd-loc{text-decoration:none;font-size:13px;padding:0 2px}
 .cd-plan.red{color:var(--danger);background:var(--danger-light)}
 .cd-amt{font-size:14px;font-weight:900;flex-shrink:0}
 .cd-row.cancel .cd-amt,.cd-row.cancel .cd-mer{color:var(--muted)}
@@ -1884,7 +1885,7 @@ function renderCards(){
     return `<details class="fcard cd-card"${cdOpen(key)} ontoggle="cdToggle(this,'${key.replace(/'/g,"\\'")}')"><summary class="fcard-head cd-head"><span class="cd-name">💳 ${esc(c)}</span><span class="cd-cnt">${a.length}건</span><span class="fcard-total">${fmt(sum)}</span></summary>`+
       cdRows(key,a,t=>{const d=new Date(t.at||t.date);
         return `<div class="cd-row${t.cancel?' cancel':''}"><div class="cd-date">${d.getMonth()+1}/${d.getDate()}<br><span>${pad2(d.getHours())}:${pad2(d.getMinutes())}</span></div>`+
-        `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}</div>`+
+        `<div class="cd-mer memo-tap" onclick="editMemo('cardtx','${t.id}')">${esc(t.merchant)}${t.plan&&t.plan!=='일시불'?` <span class="cd-plan">${esc(t.plan)}</span>`:''}${t.cancel?' <span class="cd-plan red">취소</span>':''}${t.loc?` <a class="cd-loc" href="${locUrl(t.loc)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="결제한 위치 보기">📍</a>`:''}${t.memo?`<div class="cd-memo">📝 ${esc(t.memo)}</div>`:'<div class="cd-memo add">+ 메모</div>'}</div>`+
         `${catBtn('cardtx',t)}<div class="cd-amt">${fmt(t.amount)}</div><button class="tx-del" onclick="delCardTx('${t.id}')">×</button></div>`;})+
       `</details>`;
   }).join('');
@@ -1907,6 +1908,17 @@ function parseWalletNoti(title,text){
   return{amount,card,merchant:title||'(가맹점 없음)',plan:'',cancel:/환불|취소/.test(text)};
 }
 const WALLET_DEFAULT_NAMES=[[/^Redot Card/i,'레드카드']];
+// 결제 위치: MacroDroid가 알림내용 끝에 붙인 "[위치:37.5665,126.9780]"(지도 링크여도 됨)에서 위도·경도를 꺼냄
+// 위치를 못 받아 "[위치:]"처럼 비어 있으면 위치 없이 기록. 위치 표시가 없는 예전 알림도 그대로 처리됨
+function splitLoc(text){
+  const m=String(text||'').match(/\s*\[위치:([^\]]*)\]\s*$/);
+  if(!m)return{text,loc:null};
+  const n=m[1].match(/-?\d+\.\d+/g);
+  let loc=null;
+  if(n&&n.length>=2){const lat=+n[0],lng=+n[1];if(Math.abs(lat)<=90&&Math.abs(lng)<=180&&(lat||lng))loc={lat,lng};}
+  return{text:text.slice(0,m.index),loc};
+}
+const locUrl=l=>`https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}`;
 function parseTossNoti(title,text){
   title=String(title||'').trim();text=String(text||'').trim();
   const all=title+' '+text;
@@ -1953,7 +1965,8 @@ async function processInbox(){
     for(const d of docs){
       const id=d.name.split('/').pop();
       const f=d.fields||{};
-      const title=f.title?.stringValue||'',text=f.text?.stringValue||'';
+      const title=f.title?.stringValue||'';let text=f.text?.stringValue||'';
+      const lc=splitLoc(text);text=lc.text;const loc=lc.loc;   // 알림내용 끝의 [위치:…]를 떼어냄
       const at=new Date(d.createTime);               // 알림이 도착한 실제 시각
       const p=parseTossNoti(title,text)||parseWalletNoti(title,text);
       if(!p){
@@ -1969,6 +1982,7 @@ async function processInbox(){
       const date=`${at.getFullYear()}-${pad2(at.getMonth()+1)}-${pad2(at.getDate())}`;
       const ref=doc(db,'users',uid,'cardtx','auto_'+id);   // 같은 알림은 몇 번 처리해도 1건
       const rec={card:name,amount:p.amount,merchant:p.merchant,plan:p.plan,date,at:at.getTime()};
+      if(loc)rec.loc=loc;
       if(p.cancel){
         const hit=cardTx.filter(t=>t.amount===p.amount&&t.card===name&&t.merchant===p.merchant).sort((a,b)=>(b.at||0)-(a.at||0))[0];
         if(hit)await deleteDoc(doc(db,'users',uid,'cardtx',hit.id));
@@ -2034,7 +2048,7 @@ window.alDelUnknown=async function(id){
   try{await deleteDoc(doc(db,'users',uid,'inbox',id));}catch(e){toast('삭제 실패');}
   alUnknown=alUnknown.filter(u=>u.id!==id);renderAutolog();
 };
-const alBody=()=>`{"fields":{"title":{"stringValue":"여기에_알림제목"},"text":{"stringValue":"여기에_알림내용"},"key":{"stringValue":"${alCfg.key}"}}}`;
+const alBody=()=>`{"fields":{"title":{"stringValue":"여기에_알림제목"},"text":{"stringValue":"여기에_알림내용 [위치:여기에_위치]"},"key":{"stringValue":"${alCfg.key}"}}}`;
 
 function renderAutolog(){
   const btn=document.getElementById('autologToggle');
@@ -2053,6 +2067,7 @@ function renderAutolog(){
       `<div class="al-label">URL · 방식 POST</div><div class="al-row"><code class="al-code wrap">${esc(alInboxUrl())}</code><button class="al-btn ghost" onclick="alCopy('url')">복사</button></div>`+
       `<div class="al-label">본문 · application/json</div><div class="al-row"><code class="al-code wrap">${esc(alBody())}</code><button class="al-btn ghost" onclick="alCopy('body')">복사</button></div>`+
       `<div class="al-desc">붙여넣은 뒤 <b>여기에_알림제목</b>, <b>여기에_알림내용</b> 글자를 지우고 그 자리에 MacroDroid의 <b>…</b> 버튼으로 '알림 제목', '알림 텍스트'를 넣으세요.</div>`+
+      `<div class="al-desc">📍 결제 위치도 남기려면 <b>여기에_위치</b> 자리에 MacroDroid의 <b>…</b> 버튼으로 위치(위도,경도)를 넣고, HTTP 요청 바로 앞에 <b>'위치 강제 업데이트'</b> 동작을 추가하세요. 위치가 필요 없으면 <b>[위치:여기에_위치]</b> 부분을 통째로 지우면 돼요.</div>`+
     `</div>`:'')+
     `<div class="al-step"><div class="al-h">③ 카드 이름 바꾸기</div>`+
       `<div class="al-desc">알림에 찍히는 카드사 이름을 세부내역에서 쓸 이름으로 바꿔요. 새 카드가 들어오면 자동으로 추가돼요.</div>`+
